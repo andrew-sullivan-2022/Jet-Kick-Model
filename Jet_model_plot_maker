@@ -1,0 +1,406 @@
+import numpy as np
+import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+
+matplotlib.rcParams['mathtext.fontset'] = 'stix'
+matplotlib.rcParams['font.family'] = 'STIXGeneral'
+
+
+
+
+
+## LOADING SAVED FILES
+
+# NTP from P = 1/Q jet power distribution
+NTP_c25_NFW_d1_e0_duty001_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty001_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty001_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty001_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty001_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty001_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+
+# finding the minimum, maximum NTP as a function of common radius
+NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_minimum = []
+NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_maximum = []
+NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_minimum = []
+NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_maximum = []
+NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_minimum = []
+NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_maximum = []
+for i in range(len(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1)):
+    core = common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1[i]
+    cusp_index = np.argmin(np.abs(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1 - core))
+    NFW_index = np.argmin(np.abs(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1 - core))
+    NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_minimum.append(min(NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1[i], NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1[cusp_index], NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1[NFW_index]))
+    NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_maximum.append(max(NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1[i], NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1[cusp_index], NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1[NFW_index]))
+    NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_minimum.append(min(NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ1[i], NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ1[cusp_index], NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ1[NFW_index]))
+    NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_maximum.append(max(NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ1[i], NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ1[cusp_index], NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ1[NFW_index]))
+    NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_minimum.append(min(NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ1[i], NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ1[cusp_index], NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ1[NFW_index]))
+    NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_maximum.append(max(NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ1[i], NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ1[cusp_index], NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ1[NFW_index]))
+
+NTP_c25_NFW_d1_e0_duty04_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty04_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty04_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty04_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty04_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty04_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty05_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty05_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty05_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty05_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty05_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty05_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty1_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e0_duty1_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty1_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e05_duty1_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty1_thetaJ85_thetaFRI15_sQ1 = np.loadtxt('NTP_c25_NFW_d1_e1_duty1_thetaJ85_thetaFRI15_sQ1.txt', delimiter = ',')
+
+# NTP from P = 1/Q^1.5 jet power distribution
+common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty001_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty001_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty001_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty001_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty001_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty001_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty04_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty04_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty04_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty04_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty04_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty04_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty05_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty05_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty05_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty05_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty05_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty05_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e0_duty1_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e0_duty1_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e05_duty1_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e05_duty1_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+NTP_c25_NFW_d1_e1_duty1_thetaJ85_thetaFRI15_sQ15 = np.loadtxt('NTP_c25_NFW_d1_e1_duty1_thetaJ85_thetaFRI15_sQ15.txt', delimiter = ',')
+
+# NTP fraction profiles from Sullivan+24c
+a0_c25_d1_e0_NTP_scalefactor = np.loadtxt('a0_c25_d1_e0_NTP_scalefactor.txt', delimiter = ',')
+a05_c25_d1_e0_NTP_scalefactor = np.loadtxt('a05_c25_d1_e0_NTP_scalefactor.txt', delimiter = ',')
+NFW_c25_d1_e0_NTP_scalefactor = np.loadtxt('NFW_c25_d1_e0_NTP_scalefactor.txt', delimiter = ',')
+a15_c25_d1_e0_NTP_scalefactor = np.loadtxt('a15_c25_d1_e0_NTP_scalefactor.txt', delimiter = ',')
+a0_c25_d1_e1_eta06_NTP_scalefactor = np.loadtxt('a0_c25_d1_e1_eta06_NTP_scalefactor.txt', delimiter = ',')
+a05_c25_d1_e1_eta06_NTP_scalefactor = np.loadtxt('a05_c25_d1_e1_eta06_NTP_scalefactor.txt', delimiter = ',')
+NFW_c25_d1_e1_eta06_NTP_scalefactor = np.loadtxt('NFW_c25_d1_e1_eta06_NTP_scalefactor.txt', delimiter = ',')
+a15_c25_d1_e1_eta06_NTP_scalefactor = np.loadtxt('a15_c25_d1_e1_eta06_NTP_scalefactor.txt', delimiter = ',')
+NFW_c25_d1_e05_eta08_NTP_scalefactor = np.loadtxt('NFW_c25_d1_e05_eta08_NTP_scalefactor.txt', delimiter = ',')
+a0_c25_d1_e0_NTP_scalefactor_F01 = np.loadtxt('a0_c25_d1_e0_NTP_scalefactor_F01.txt', delimiter = ',')
+a05_c25_d1_e0_NTP_scalefactor_F01 = np.loadtxt('a05_c25_d1_e0_NTP_scalefactor_F01.txt', delimiter = ',')
+NFW_c25_d1_e0_NTP_scalefactor_F01 = np.loadtxt('NFW_c25_d1_e0_NTP_scalefactor_F01.txt', delimiter = ',')
+a15_c25_d1_e0_NTP_scalefactor_F01 = np.loadtxt('a15_c25_d1_e0_NTP_scalefactor_F01.txt', delimiter = ',')
+a0_c25_d1_e1_eta06_NTP_scalefactor_F01 = np.loadtxt('a0_c25_d1_e1_eta06_NTP_scalefactor_F01.txt', delimiter = ',')
+a05_c25_d1_e1_eta06_NTP_scalefactor_F01 = np.loadtxt('a05_c25_d1_e1_eta06_NTP_scalefactor_F01.txt', delimiter = ',')
+NFW_c25_d1_e1_eta06_NTP_scalefactor_F01 = np.loadtxt('NFW_c25_d1_e1_eta06_NTP_scalefactor_F01.txt', delimiter = ',')
+a15_c25_d1_e1_eta06_NTP_scalefactor_F01 = np.loadtxt('a15_c25_d1_e1_eta06_NTP_scalefactor_F01.txt', delimiter = ',')
+NFW_c25_d1_e05_eta08_NTP_scalefactor_F01 = np.loadtxt('NFW_c25_d1_e05_eta08_NTP_scalefactor_F01.txt', delimiter = ',')
+
+
+
+
+
+## PLOTS
+
+## Galaxy cluster halocentric radius
+
+s = np.logspace(-4, 1, base=10, num=150)
+
+
+
+## Parameter space of 'inside-out' NTP predictions
+
+# - rows: varying the jet power distribution slope, sQ = -1, -1.5
+# - columns: varying the duty cycle, duty = 0.1, 0.2, 0.3
+
+fig = plt.figure(figsize=[8, 5])
+gs = gridspec.GridSpec(2, 3)
+
+plt0 = plt.subplot(gs[0])
+plt0.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, color='teal', linewidth=2)
+plt0.plot(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1, color='blue', linewidth=2)
+plt0.plot(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1, color='blueviolet', linewidth=2)
+plt0.set_xscale('log')
+plt0.set_xlim(0.5*10**(-2), 0.5*10**(0))
+plt0.set_ylim(-0.01, 0.52)
+plt0.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5])
+plt0.legend(title='$P(Q_\\mathrm{jet}) \\propto Q_\\mathrm{jet}^{-1}$ \n $\\delta=0.1$', loc=1)
+
+plt1 = plt.subplot(gs[1], sharey=plt0)
+plt1.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ1, color='teal', linewidth=2)
+plt1.plot(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ1, color='blue', linewidth=2)
+plt1.plot(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ1, color='blueviolet', linewidth=2)
+plt1.set_xscale('log')
+plt1.set_xlim(0.5*10**(-2), 0.5*10**(0))
+plt1.set_xlabel('$r/r_{500}$', fontsize = 18)
+plt.setp(plt1.get_yticklabels(), visible=False)
+plt1.legend(title='$\\delta=0.2$', loc=1)
+
+plt2 = plt.subplot(gs[2], sharey=plt1)
+plt2.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ1, color='teal', label='$\\varepsilon=0$')
+plt2.plot(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ1, color='blue', label='$\\varepsilon=0.5$')
+plt2.plot(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ1, color='blueviolet', label='$\\varepsilon=1$')
+plt2.set_xscale('log')
+plt2.set_xlim(0.5*10**(-2), 0.5*10**(0))
+plt.setp(plt2.get_yticklabels(), visible=False)
+plt2.legend(title='$\\delta=0.3$')
+
+plt3 = plt.subplot(gs[3])
+plt3.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15, color='teal')
+plt3.plot(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15, color='blue')
+plt3.plot(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15, color='blueviolet')
+plt3.set_xscale('log')
+plt3.set_xlim(0.5*10**(-2), 0.5*10**(0))
+plt3.set_ylim(-0.001, 0.055)
+plt3.set_yticks([0, 0.01, 0.02, 0.03, 0.04, 0.05])
+plt3.legend(title='$P(Q_\\mathrm{jet}) \\propto Q_\\mathrm{jet}^{-1.5}$ \n $\\delta=0.1$', loc=1)
+
+plt4 = plt.subplot(gs[4], sharey=plt3)
+plt4.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e0_duty02_thetaJ85_thetaFRI15_sQ15, color='teal')
+plt4.plot(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ15, color='blue')
+plt4.plot(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e1_duty02_thetaJ85_thetaFRI15_sQ15, color='blueviolet')
+plt4.set_xscale('log')
+plt4.set_xlim(0.5*10**(-2), 0.5*10**(0))
+plt.setp(plt4.get_yticklabels(), visible=False)
+plt4.legend(title='$\\delta=0.2$', loc=1)
+
+plt5 = plt.subplot(gs[5], sharey=plt3)
+plt5.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e0_duty03_thetaJ85_thetaFRI15_sQ15, color='teal', label='$\\varepsilon=0$')
+plt5.plot(common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ15, color='blue', label='$\\varepsilon=0.5$')
+plt5.plot(common_radius_c25_NFW_d1_e1_duty01_thetaJ85_thetaFRI15_sQ15, NTP_c25_NFW_d1_e1_duty03_thetaJ85_thetaFRI15_sQ15, color='blueviolet', label='$\\varepsilon=1$')
+plt5.set_xscale('log')
+plt5.set_xlim(0.5*10**(-2), 0.5*10**(0))
+plt.setp(plt5.get_yticklabels(), visible=False)
+plt5.legend(title='$\\delta=0.3$' )
+
+plt.subplots_adjust(hspace=.0, wspace=.0)
+fig.add_subplot(111, frame_on=False)
+plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+plt.xlabel('$r/r_{500}$', fontsize=18)
+plt.ylabel('$\\mathcal{F} \\equiv p_\\mathrm{nt}/p$', fontsize=18)
+
+plt.savefig('param_space_NTP_fractions.png', dpi=350, bbox_inches='tight')
+plt.show()
+
+
+
+## Literature constraints on the non-thermal pressure
+
+# Nelson+14 non-thermal pressure component
+def Nelson_NTP(s, A=0.452, B=0.841, G=1.628):
+    return (1 - A*(1 + np.exp(-(s/(2.70*B))**G)))
+s_Nelson_trunc = np.logspace(np.log10(0.27), 2, num=150)
+
+# Angelinelli+20 non-thermal pressure component
+def Angelinelli_NTP(s, a0=0.3388, a1=0.822, a2=0.0697):
+    return a0*(s/2.70)**a1 + a2
+
+# Hitomi Collaboration+16, 18
+R500_Perseus = 1.3 # Mpc
+Hitomi_100kpc = np.logspace(-4, np.log10(0.1/R500_Perseus))
+
+# binned scaled halocentric radius, for fitting function
+s50 = np.logspace(-3, 1, base=10, num=50)
+logs50_array = np.array([np.log10(i) for i in s50])
+s150 = np.logspace(-3, 1, base=10, num=150)
+logs150_array = np.array([np.log10(i) for i in s150])
+
+# fitting function, from Nelson+14
+def Nelson_NTP_fit(s, A, B, G):
+    return 1 - A*(1 + np.exp(-(10**s/B)**G))
+# used to fit to Sullivan+23b:
+Nelson_popt, Nelson_pcov = curve_fit(Nelson_NTP_fit, logs50_array, NFW_c25_d1_e05_eta08_NTP_scalefactor)
+Nelson_popt_F01, Nelson_pcov_F01 = curve_fit(Nelson_NTP_fit, logs50_array, NFW_c25_d1_e05_eta08_NTP_scalefactor_F01)
+
+
+
+## Comparison of 'inside-out' NTP predictions with 'outside-in' NTP predictions from Sullivan+24c and the literature
+
+# - rows: varying the duty cycle, duty = 0.1, 0.2, 0.3
+# - columns: varying the central NTP fraction, F = 0, 0.1
+
+fig = plt.figure(figsize=[12, 13])
+gs = gridspec.GridSpec(3, 2)
+
+plt0 = plt.subplot(gs[0])
+plt0.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_minimum, color='steelblue', linewidth=2, zorder=3)
+plt0.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', linewidth=2, zorder=3)
+plt0.fill_between(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_minimum, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', alpha=0.4, label='Inside-out NTP model, with duty cycle $\\delta=0.1$', zorder=3)
+plt0.fill_between(s50, a0_c25_d1_e0_NTP_scalefactor, a0_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine', label='Outside-in NTP model, Sullivan et al. 2024c; \nwith a central NTP fraction of $\\mathcal{F}_0 = 0$')
+plt0.fill_between(s50, a05_c25_d1_e0_NTP_scalefactor, a05_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt0.fill_between(s50, NFW_c25_d1_e0_NTP_scalefactor, NFW_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt0.fill_between(s50, a15_c25_d1_e0_NTP_scalefactor, a15_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt0.plot(s150, Nelson_NTP_fit(logs150_array, *Nelson_popt), linewidth=4.5, ls=':', color='black', label='Best-fit to the outside-in model', zorder=11)
+plt0.plot(s_Nelson_trunc, Nelson_NTP(s_Nelson_trunc, A=0.452, B=0.841, G=1.628), linewidth=2.8, ls='-', color='darkorange', label='Nelson et al. 2014', zorder=10)
+plt0.plot(Hitomi_100kpc, 0.04**Hitomi_100kpc**0, color='hotpink', linewidth=2.8, ls='-', label='Hitomi Collaboration et al. 2016')
+plt0.fill_between(Hitomi_100kpc, 0.02*Hitomi_100kpc**0, 0.12**Hitomi_100kpc**0, color='hotpink', alpha=0.3, label='Hitomi Collaboration et al. 2018', zorder=-4)
+plt0.scatter(1, 5.7/100, color='firebrick', label='Eckert et al. 2019')
+plt0.errorbar(1, 5.7/100, yerr=3.1/100, fmt='o', color='firebrick', elinewidth=2, capsize=3)
+plt0.errorbar(1.43, 9.9/100, yerr=4.9/100, fmt='o', elinewidth=2, capsize=3, color='firebrick', zorder=9)
+plt0.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.1427, a1=1.246, a2=0.0844), linewidth=2.8, ls=(0, (4, 1)), color='deepskyblue', label='Angelinelli et al. 2020 (turbulent motion)')
+plt0.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.3388, a1=0.822, a2=0.0697), linewidth=2.8, ls=(0, (4, 1)), color='blue', label='Angelinelli et al. 2020 (total motion)')
+plt0.scatter(0.05, 0.555/100, color='purple', label='Dupourqué et al. 2023')
+plt0.errorbar(0.05, 0.555/100, yerr=0.125/100, xerr=0.05, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt0.errorbar(0.175, 1.24/100, yerr=0.30/100, xerr=0.075, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt0.errorbar(0.375, 1.23/100, yerr=0.29/100, xerr=0.125, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt0.errorbar(0.75, 7.415/100, yerr=1.955/100, xerr=0.25, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt0.set_xscale('log')
+plt0.set_xlim(0.5*10**(-2), 0.2*10**1)
+plt0.set_ylim(-0.01, 0.52)
+plt0.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5])
+plt0.legend(loc=2)
+
+plt1 = plt.subplot(gs[1], sharey=plt0)
+plt1.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_minimum, color='steelblue', linewidth=2, zorder=3)
+plt1.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', linewidth=2, zorder=3)
+plt1.fill_between(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_minimum, NTP_c25_NFW_d1_duty01_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', alpha=0.4, label='Inside-out NTP model, with duty cycle $\\delta=0.1$', zorder=3)
+plt1.fill_between(s50, a0_c25_d1_e0_NTP_scalefactor_F01, a0_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine', label='Outside-in NTP model, Sullivan et al. 2024c; \nwith a central NTP fraction of $\\mathcal{F}_0 = 0.1$')
+plt1.fill_between(s50, a05_c25_d1_e0_NTP_scalefactor_F01, a05_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt1.fill_between(s50, NFW_c25_d1_e0_NTP_scalefactor_F01, NFW_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt1.fill_between(s50, a15_c25_d1_e0_NTP_scalefactor_F01, a15_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt1.plot(s150, Nelson_NTP_fit(logs150_array, *Nelson_popt_F01), linewidth=4.5, ls=':', color='black', label='Best-fit to the outside-in model', zorder=11)
+plt1.plot(s_Nelson_trunc, Nelson_NTP(s_Nelson_trunc, A=0.452, B=0.841, G=1.628), linewidth=2.8, ls='-', color='darkorange', zorder=10)
+plt1.fill_between(Hitomi_100kpc, 0.02*Hitomi_100kpc**0, 0.12**Hitomi_100kpc**0, color='hotpink', alpha=0.3, zorder=-4)
+plt1.plot(Hitomi_100kpc, 0.04**Hitomi_100kpc**0, color='hotpink', linewidth=2.8, ls='-')
+plt1.scatter(1, 5.7/100, color='firebrick')
+plt1.errorbar(1, 5.7/100, yerr=3.1/100, fmt='o', color='firebrick', elinewidth=2, capsize=3)
+plt1.errorbar(1.43, 9.9/100, yerr=4.9/100, fmt='o', elinewidth=2, capsize=3, color='firebrick', zorder=9)
+plt1.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.1427, a1=1.246, a2=0.0844), linewidth=2.8, ls=(0, (4, 1)), color='deepskyblue')
+plt1.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.3388, a1=0.822, a2=0.0697), linewidth=2.8, ls=(0, (4, 1)), color='blue')
+plt1.scatter(0.05, 0.555/100, color='purple', zorder=4)
+plt1.errorbar(0.05, 0.555/100, yerr=0.125/100, xerr=0.05, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt1.errorbar(0.175, 1.24/100, yerr=0.30/100, xerr=0.075, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt1.errorbar(0.375, 1.23/100, yerr=0.29/100, xerr=0.125, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt1.errorbar(0.75, 7.415/100, yerr=1.955/100, xerr=0.25, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt1.set_xscale('log')
+plt1.set_xlim(0.5*10**(-2), 0.2*10**1)
+plt.setp(plt1.get_yticklabels(), visible=False)
+plt1.legend(loc=2)
+
+plt2 = plt.subplot(gs[2])
+plt2.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_minimum, color='steelblue', linewidth=2, zorder=2)
+plt2.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', linewidth=2, zorder=2)
+plt2.fill_between(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_minimum, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', alpha=0.4, label='Inside-out NTP model, with duty cycle $\\delta=0.2$', zorder=2)
+plt2.fill_between(s50, a0_c25_d1_e0_NTP_scalefactor, a0_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine', label='Outside-in NTP model, Sullivan et al. 2024c; \nwith a central NTP fraction of $\\mathcal{F}_0 = 0$')
+plt2.fill_between(s50, a05_c25_d1_e0_NTP_scalefactor, a05_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt2.fill_between(s50, NFW_c25_d1_e0_NTP_scalefactor, NFW_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt2.fill_between(s50, a15_c25_d1_e0_NTP_scalefactor, a15_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt2.plot(s150, Nelson_NTP_fit(logs150_array, *Nelson_popt), linewidth=4.5, ls=':', color='black', label='Best-fit to the outside-in model', zorder=11)
+plt2.plot(s_Nelson_trunc, Nelson_NTP(s_Nelson_trunc, A=0.452, B=0.841, G=1.628), linewidth=2.8, ls='-', color='darkorange', zorder=10)
+plt2.plot(Hitomi_100kpc, 0.04**Hitomi_100kpc**0, color='hotpink', linewidth=2.8, ls='-')
+plt2.fill_between(Hitomi_100kpc, 0.02*Hitomi_100kpc**0, 0.12**Hitomi_100kpc**0, color='hotpink', alpha=0.3, zorder=-4)
+plt2.scatter(1, 5.7/100, color='firebrick')
+plt2.errorbar(1, 5.7/100, yerr=3.1/100, fmt='o', color='firebrick', elinewidth=2, capsize=3)
+plt2.errorbar(1.43, 9.9/100, yerr=4.9/100, fmt='o', elinewidth=2, capsize=3, color='firebrick', zorder=9)
+plt2.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.1427, a1=1.246, a2=0.0844), linewidth=2.8, ls=(0, (4, 1)), color='deepskyblue')
+plt2.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.3388, a1=0.822, a2=0.0697), linewidth=2.8, ls=(0, (4, 1)), color='blue')
+plt2.scatter(0.05, 0.555/100, color='purple')
+plt2.errorbar(0.05, 0.555/100, yerr=0.125/100, xerr=0.05, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt2.errorbar(0.175, 1.24/100, yerr=0.30/100, xerr=0.075, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt2.errorbar(0.375, 1.23/100, yerr=0.29/100, xerr=0.125, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt2.errorbar(0.75, 7.415/100, yerr=1.955/100, xerr=0.25, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt2.set_xscale('log')
+plt2.set_xlim(0.5*10**(-2), 0.2*10**1)
+plt2.set_ylim(-0.01, 0.52)
+plt2.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5])
+plt2.legend(loc=2)
+
+plt3 = plt.subplot(gs[3], sharey=plt2)
+plt3.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_minimum, color='steelblue', linewidth=2, zorder=2)
+plt3.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', linewidth=2, zorder=2)
+plt3.fill_between(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_minimum, NTP_c25_NFW_d1_duty02_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', alpha=0.4, label='Inside-out NTP model, with duty cycle $\\delta=0.2$', zorder=2)
+plt3.fill_between(s50, a0_c25_d1_e0_NTP_scalefactor_F01, a0_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine', label='Outside-in NTP model, Sullivan et al. 2024c; \nwith a central NTP fraction of $\\mathcal{F}_0 = 0.1$')
+plt3.fill_between(s50, a05_c25_d1_e0_NTP_scalefactor_F01, a05_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt3.fill_between(s50, NFW_c25_d1_e0_NTP_scalefactor_F01, NFW_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt3.fill_between(s50, a15_c25_d1_e0_NTP_scalefactor_F01, a15_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt3.plot(s150, Nelson_NTP_fit(logs150_array, *Nelson_popt_F01), linewidth=4.5, ls=':', color='black', label='Best-fit to the outside-in model', zorder=11)
+plt3.plot(s_Nelson_trunc, Nelson_NTP(s_Nelson_trunc, A=0.452, B=0.841, G=1.628), linewidth=2.8, ls='-', color='darkorange', zorder=10)
+plt3.fill_between(Hitomi_100kpc, 0.02*Hitomi_100kpc**0, 0.12**Hitomi_100kpc**0, color='hotpink', alpha=0.3, zorder=-4)
+plt3.plot(Hitomi_100kpc, 0.04**Hitomi_100kpc**0, color='hotpink', linewidth=2.8, ls='-')
+plt3.scatter(1, 5.7/100, color='firebrick')
+plt3.errorbar(1, 5.7/100, yerr=3.1/100, fmt='o', color='firebrick', elinewidth=2, capsize=3)
+plt3.errorbar(1.43, 9.9/100, yerr=4.9/100, fmt='o', elinewidth=2, capsize=3, color='firebrick', zorder=9)
+plt3.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.1427, a1=1.246, a2=0.0844), linewidth=2.8, ls=(0, (4, 1)), color='deepskyblue')
+plt3.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.3388, a1=0.822, a2=0.0697), linewidth=2.8, ls=(0, (4, 1)), color='blue')
+plt3.scatter(0.05, 0.555/100, color='purple', zorder=4)
+plt3.errorbar(0.05, 0.555/100, yerr=0.125/100, xerr=0.05, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt3.errorbar(0.175, 1.24/100, yerr=0.30/100, xerr=0.075, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt3.errorbar(0.375, 1.23/100, yerr=0.29/100, xerr=0.125, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt3.errorbar(0.75, 7.415/100, yerr=1.955/100, xerr=0.25, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt3.set_xscale('log')
+plt3.set_xlim(0.5*10**(-2), 0.2*10**1)
+plt.setp(plt3.get_yticklabels(), visible=False)
+plt3.legend(loc=2)
+
+plt4 = plt.subplot(gs[4])
+plt4.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_minimum, color='steelblue', linewidth=2)
+plt4.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', linewidth=2)
+plt4.fill_between(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_minimum, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', label='Inside-out NTP model, with duty cycle $\\delta=0.3$', alpha=0.4)
+plt4.fill_between(s50, a0_c25_d1_e0_NTP_scalefactor, a0_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine', label='Outside-in NTP model, Sullivan et al. 2024c; \nwith a central NTP fraction of $\\mathcal{F}_0 = 0$')
+plt4.fill_between(s50, a05_c25_d1_e0_NTP_scalefactor, a05_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt4.fill_between(s50, NFW_c25_d1_e0_NTP_scalefactor, NFW_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt4.fill_between(s50, a15_c25_d1_e0_NTP_scalefactor, a15_c25_d1_e1_eta06_NTP_scalefactor, alpha=0.4, color='mediumaquamarine')
+plt4.plot(s150, Nelson_NTP_fit(logs150_array, *Nelson_popt), linewidth=4.5, ls=':', color='black', label='Best-fit to the outside-in model', zorder=11)
+plt4.plot(s_Nelson_trunc, Nelson_NTP(s_Nelson_trunc, A=0.452, B=0.841, G=1.628), linewidth=2.8, ls='-', color='darkorange', zorder=10)
+plt4.plot(Hitomi_100kpc, 0.04**Hitomi_100kpc**0, color='hotpink', linewidth=2.8, ls='-')
+plt4.fill_between(Hitomi_100kpc, 0.02*Hitomi_100kpc**0, 0.12**Hitomi_100kpc**0, color='hotpink', alpha=0.3, zorder=-4)
+plt4.scatter(1, 5.7/100, color='firebrick')
+plt4.errorbar(1, 5.7/100, yerr=3.1/100, fmt='o', color='firebrick', elinewidth=2, capsize=3)
+plt4.errorbar(1.43, 9.9/100, yerr=4.9/100, fmt='o', elinewidth=2, capsize=3, color='firebrick', zorder=9)
+plt4.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.1427, a1=1.246, a2=0.0844), linewidth=2.8, ls=(0, (4, 1)), color='deepskyblue')
+plt4.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.3388, a1=0.822, a2=0.0697), linewidth=2.8, ls=(0, (4, 1)), color='blue')
+plt4.scatter(0.05, 0.555/100, color='purple')
+plt4.errorbar(0.05, 0.555/100, yerr=0.125/100, xerr=0.05, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt4.errorbar(0.175, 1.24/100, yerr=0.30/100, xerr=0.075, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt4.errorbar(0.375, 1.23/100, yerr=0.29/100, xerr=0.125, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt4.errorbar(0.75, 7.415/100, yerr=1.955/100, xerr=0.25, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt4.set_xscale('log')
+plt4.set_xlim(0.5*10**(-2), 0.2*10**1)
+plt4.set_ylim(-0.01, 0.52)
+plt4.set_yticks([0, 0.1, 0.2, 0.3, 0.4, 0.5])
+plt4.legend(loc=2)
+
+plt5 = plt.subplot(gs[5], sharey=plt4)
+plt5.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_minimum, color='steelblue', linewidth=2)
+plt5.plot(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', linewidth=2)
+plt5.fill_between(common_radius_c25_NFW_d1_e0_duty01_thetaJ85_thetaFRI15_sQ1, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_minimum, NTP_c25_NFW_d1_duty03_thetaJ85_thetaFRI15_sQ1_maximum, color='steelblue', alpha=0.4, label='Inside-out NTP model, with duty cycle $\\delta=0.3$')
+plt5.fill_between(s50, a0_c25_d1_e0_NTP_scalefactor_F01, a0_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine', label='Outside-in NTP model, Sullivan et al. 2024c; \nwith a central NTP fraction of $\\mathcal{F}_0 = 0.1$')
+plt5.fill_between(s50, a05_c25_d1_e0_NTP_scalefactor_F01, a05_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt5.fill_between(s50, NFW_c25_d1_e0_NTP_scalefactor_F01, NFW_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt5.fill_between(s50, a15_c25_d1_e0_NTP_scalefactor_F01, a15_c25_d1_e1_eta06_NTP_scalefactor_F01, alpha=0.4, color='mediumaquamarine')
+plt5.plot(s150, Nelson_NTP_fit(logs150_array, *Nelson_popt_F01), linewidth=4.5, ls=':', color='black', label='Best-fit to the outside-in model', zorder=11)
+plt5.plot(s_Nelson_trunc, Nelson_NTP(s_Nelson_trunc, A=0.452, B=0.841, G=1.628), linewidth=2.8, ls='-', color='darkorange', zorder=10)
+plt5.fill_between(Hitomi_100kpc, 0.02*Hitomi_100kpc**0, 0.12**Hitomi_100kpc**0, color='hotpink', alpha=0.3, zorder=-4)
+plt5.plot(Hitomi_100kpc, 0.04**Hitomi_100kpc**0, color='hotpink', linewidth=2.8, ls='-')
+plt5.scatter(1, 5.7/100, color='firebrick')
+plt5.errorbar(1, 5.7/100, yerr=3.1/100, fmt='o', color='firebrick', elinewidth=2, capsize=3)
+plt5.errorbar(1.43, 9.9/100, yerr=4.9/100, fmt='o', elinewidth=2, capsize=3, color='firebrick', zorder=9)
+plt5.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.1427, a1=1.246, a2=0.0844), linewidth=2.8, ls=(0, (4, 1)), color='deepskyblue')
+plt5.plot(s_Nelson_trunc, Angelinelli_NTP(s_Nelson_trunc, a0=0.3388, a1=0.822, a2=0.0697), linewidth=2.8, ls=(0, (4, 1)), color='blue')
+plt5.scatter(0.05, 0.555/100, color='purple', zorder=4)
+plt5.errorbar(0.05, 0.555/100, yerr=0.125/100, xerr=0.05, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt5.errorbar(0.175, 1.24/100, yerr=0.30/100, xerr=0.075, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt5.errorbar(0.375, 1.23/100, yerr=0.29/100, xerr=0.125, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt5.errorbar(0.75, 7.415/100, yerr=1.955/100, xerr=0.25, fmt='o', color='purple', elinewidth=2, capsize=3, zorder=4)
+plt5.set_xscale('log')
+plt5.set_xlim(0.5*10**(-2), 0.2*10**1)
+plt.setp(plt5.get_yticklabels(), visible=False)
+plt5.legend(loc=2)
+
+
+plt.subplots_adjust(hspace=.0, wspace=.0)
+fig.add_subplot(111, frame_on=False)
+plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+plt.xlabel('$r/r_\mathrm{500}$', fontsize = 18)
+plt.ylabel('$\\mathcal{F} \equiv p_\mathrm{nt}/p$', fontsize = 18)
+
+plt.savefig('jet_NTP_fractions.png', dpi=350, bbox_inches='tight')
+plt.show()
