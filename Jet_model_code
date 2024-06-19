@@ -242,19 +242,23 @@ cooling_rate = np.multiply(np.multiply(hydrogen_density_profile, hydrogen_densit
 # number of samples
 N = 500
 
-# normalisation coefficient for P = 1/x
-def prob_norm_recip(xmin, xmax):
-    return 1/(np.log(xmax/xmin))
-# inverse cummulative distribution for P = 1/x
-def inv_dist_recip(u, xmin, xmax):
-    return (xmin*np.exp(u/prob_norm_recip(xmin, xmax)))
+# normalisation coefficient for P = x^slope
+def prob_normalisation(xmin, xmax, slope):
+    if slope == -1:
+        return 1/(np.log(xmax/xmin))
+    else:
+        return (slope+1)*(xmax**(slope+1) - xmin**(slope+1))**(-1)
 
-# normalisation coefficient for P = 1/x^a, a ≠ 1
-def prob_norm_slope_not1(xmin, xmax, slope):
-    return (slope+1)*(xmax**(slope+1) - xmin**(slope+1))**(-1)
-# inverse cummulative distribution for P = 1/x^a, a ≠ 1
-def inv_dist_slope_not1(u, xmin, xmax, slope):
-    return (xmin**(slope+1) + u*(slope+1)/prob_norm_slope_not1(xmin, xmax, slope))**(1/(slope+1))
+# inverse cumualtive probability distribution for a P = x^slope
+def inv_distribution(u, xmin, xmax, slope):
+    if slope == -1:
+        return (xmin*np.exp(u/prob_normalisation(xmin, xmax, slope)))
+    else:
+        return (xmin**(slope+1) + u*(slope+1)/prob_normalisation(xmin, xmax, slope))**(1/(slope+1))
+
+# inverse cumulative distribution for a uniform distribution
+def inv_uniform_dist(u, xmin, xmax):
+    return u*(xmax - xmin)
 
 # power-law slope of source age distribution
 sT = -1
@@ -263,6 +267,7 @@ sQ = -1.5
 # jet parameters, in list form
 jet_params = [thetaJ, thetaFRI]
 source_pop_params = [duty, sQ, sT]
+
 
 
 ## Time offset for the jet to leave central galaxy / bcg
@@ -286,15 +291,10 @@ qmin = np.log10(Qmin)
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
-# EITHER:
-# jet power distribution: P = 1/x
-Qjet_samples = inv_dist_recip(u_vals, Qmin, Qmax)
-Qjet_bins = np.logspace(qmin, qmax, base=10, num=14)
-Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
-
-# OR:
-# jet power distribution: P = 1/x^a, a ≠ 1
-# Qjet_samples = inv_dist_slope_not1(u_vals, Qmin, Qmax, sQ)
+# EITHER: sampling jet powers uniformly; weighting the mean later:
+Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
+# OR: sampling jet powers by their distribution:
+# Qjet_samples = inv_distribution(u_vals, Qmin, Qmax, sQ)
 # Qjet_bins = np.logspace(qmin, qmax, base=10, num=14)
 # Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
 
@@ -313,11 +313,15 @@ u_vals = np.random.rand(N)
 age_samples = inv_dist_recip(u_vals, tmin, tmax)
 # correction for time to leave central galaxy / bcg
 ton_samples = []
+stuck_jet_indices = []
 for i in range(N):
     if age_samples[i] > t_min(Qjet_samples[i], e):
         ton_samples.append(age_samples[i] - t_min(Qjet_samples[i], e))
     elif age_samples[i] <= t_min(Qjet_samples[i], e):
-        ton_samples.append(np.nan)
+        stuck_jet_indices.append(i)
+N_prime = len(ton_samples)
+Qjet_samples_no_correction = [i for i in Qjet_samples]
+Qjet_samples = [i for j, i in enumerate(Qjet_samples) if j not in stuck_jet_indices]
 
 ton_samples_Myr = [i/Myr for i in ton_samples]
 age_samples_Myr = [i/Myr for i in age_samples]
@@ -418,51 +422,42 @@ teq_samples = []
 tfj_samples = []
 Req_samples = []
 Rjet_samples = []
-for i in range(N):
+for i in range(N_prime):
     teq_samples.append(t_eq(Qjet_samples[i], thetaJ, s0, *environ_params))
     tfj_samples.append(t_fj(Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params))
-    if np.isnan(ton_samples[i]):
-        Rjet_samples.append(np.nan)
+    if ton_samples[i] > teq_samples[i]:
+        Rjet_samples.append(R_fj_phase(ton_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params))
+        Req_samples.append(R_eq(Qjet_samples[i], thetaJ, s0, *environ_params))
+    elif ton_samples[i] <= teq_samples[i]:
+        Rjet_samples.append(R_jet_phase(ton_samples[i], Qjet_samples[i], thetaJ, s0, *environ_params))
         Req_samples.append(np.nan)
-    else:
-        if ton_samples[i] > teq_samples[i]:
-            Rjet_samples.append(R_fj_phase(ton_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params))
-            Req_samples.append(R_eq(Qjet_samples[i], thetaJ, s0, *environ_params))
-        elif ton_samples[i] <= teq_samples[i]:
-            Rjet_samples.append(R_jet_phase(ton_samples[i], Qjet_samples[i], thetaJ, s0, *environ_params))
-            Req_samples.append(np.nan)
 
 # appending the filling factor, half-opening angle and scaled halo radius
 filling_factor_samples = []
 half_angle_samples = []
 scaled_halo_radii_samples = []
-for i in range(N):
-    if np.isnan(ton_samples[i]):
-        filling_factor_samples.append(np.nan)
-        half_angle_samples.append(np.nan)
-        scaled_halo_radii_samples.append(np.nan)
-    else:
-        if ton_samples[i] > teq_samples[i]:
-            Rjet_halo_radii = np.logspace(np.log10(rres), np.log10(Rjet_samples[i]), base=10, num=150)
-            jet_phase_steps = round(150*(np.log10(Req_samples[i]) + np.log10(rres))/(np.log10(Rjet_samples[i]) + np.log10(rres)))
-            flaring_jet_phase_steps = round(150*(np.log10(Rjet_samples[i]) - np.log10(Req_samples[i]))/(np.log10(Rjet_samples[i]) + np.log10(rres)))
-            jet_phase_radii = np.logspace(np.log10(rres), np.log10(Req_samples[i]), base=10, num=jet_phase_steps)
-            flaring_jet_phase_radii = np.logspace(np.log10(Req_samples[i]), np.log10(Rjet_samples[i]), base=10, num=flaring_jet_phase_steps)
-            scaled_halo_radii_samples.append(np.divide(Rjet_halo_radii, rvir))
+for i in range(N_prime):
+    if ton_samples[i] > teq_samples[i]:
+        Rjet_halo_radii = np.logspace(np.log10(rres), np.log10(Rjet_samples[i]), base=10, num=150)
+        jet_phase_steps = round(150*(np.log10(Req_samples[i]) + np.log10(rres))/(np.log10(Rjet_samples[i]) + np.log10(rres)))
+        flaring_jet_phase_steps = round(150*(np.log10(Rjet_samples[i]) - np.log10(Req_samples[i]))/(np.log10(Rjet_samples[i]) + np.log10(rres)))
+        jet_phase_radii = np.logspace(np.log10(rres), np.log10(Req_samples[i]), base=10, num=jet_phase_steps)
+        flaring_jet_phase_radii = np.logspace(np.log10(Req_samples[i]), np.log10(Rjet_samples[i]), base=10, num=flaring_jet_phase_steps)
+        scaled_halo_radii_samples.append(np.divide(Rjet_halo_radii, rvir))
 
-            jet_phase_filling_factor = [1 - np.cos(thetaJ)]*jet_phase_steps
-            flaring_jet_phase_filling_factor = filling_factor(flaring_jet_phase_radii, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
-            jet_phase_half_angle = [thetaJ]*jet_phase_steps
-            flaring_jet_half_angle = half_opening_angle(flaring_jet_phase_radii, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
+        jet_phase_filling_factor = [1 - np.cos(thetaJ)]*jet_phase_steps
+        flaring_jet_phase_filling_factor = filling_factor(flaring_jet_phase_radii, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
+        jet_phase_half_angle = [thetaJ]*jet_phase_steps
+        flaring_jet_half_angle = half_opening_angle(flaring_jet_phase_radii, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
 
-            filling_factor_samples.append([*jet_phase_filling_factor, *flaring_jet_phase_filling_factor])
-            half_angle_samples.append([*jet_phase_half_angle, *flaring_jet_half_angle])
-        elif ton_samples[i] <= teq_samples[i]:
-            Rjet_halo_radii = np.logspace(np.log10(rres), np.log10(Rjet_samples[i]), base=10, num=150)
-            scaled_halo_radii_samples.append(np.divide(Rjet_halo_radii, rvir))
+        filling_factor_samples.append([*jet_phase_filling_factor, *flaring_jet_phase_filling_factor])
+        half_angle_samples.append([*jet_phase_half_angle, *flaring_jet_half_angle])
+    elif ton_samples[i] <= teq_samples[i]:
+        Rjet_halo_radii = np.logspace(np.log10(rres), np.log10(Rjet_samples[i]), base=10, num=150)
+        scaled_halo_radii_samples.append(np.divide(Rjet_halo_radii, rvir))
 
-            filling_factor_samples.append([1 - np.cos(thetaJ)]*150)
-            half_angle_samples.append([thetaJ]*150)
+        filling_factor_samples.append([1 - np.cos(thetaJ)]*150)
+        half_angle_samples.append([thetaJ]*150)
 
 teq_samples_Myr = [i/Myr for i in teq_samples]
 tfj_samples_Myr = [i/Myr for i in tfj_samples]
@@ -474,31 +469,32 @@ Rjet_hist, _ = np.histogram(Rjet_samples_kpc, bins=Rjet_bins)
 Req_bins = np.logspace(np.log10(min(Req_samples_kpc)), np.log10(max(Req_samples_kpc)), base=10, num=12)
 Req_hist, _ = np.histogram(Req_samples_kpc, bins=Req_bins)
 
-
 # creating a common set of radius values
-scaled_halo_radii_samples_no_nans = [i for i in scaled_halo_radii_samples if np.all(np.isnan(i)==False)]
-common_scaled_radii = np.logspace(np.log10(min(np.concatenate(scaled_halo_radii_samples_no_nans))), np.log10(max(np.concatenate(scaled_halo_radii_samples_no_nans))), base=10, num=150)
-# number of sources that make it out of the central galaxy / bch
-N_no_nans = len(scaled_halo_radii_samples_no_nans)
+common_scaled_radii = np.logspace(np.log10(min(np.concatenate(scaled_halo_radii_samples))), np.log10(max(np.concatenate(scaled_halo_radii_samples))), base=10, num=150)
 
 # calculating the heating rates
 heating_rate_samples = []
-for i in range(N):
-    if np.isnan(ton_samples[i]):
-        heating_rate_samples.append(np.nan)
-    else:
-        Rjet_conical_volume = jet_filling_vol(Rjet_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
-        heating_rate_samples.append(np.multiply(filling_factor_samples[i], 2*np.pi*duty*Qjet_samples[i]/Rjet_conical_volume))
-heating_rate_samples_no_nans = [i for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+for i in range(N_prime):
+    Rjet_conical_volume = jet_filling_vol(Rjet_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
+    heating_rate_samples.append(np.multiply(filling_factor_samples[i], 2*np.pi*duty*Qjet_samples[i]/Rjet_conical_volume))
 # interpolating heating values
-interpolated_heating = np.zeros((N_no_nans, len(heating_rate_samples_no_nans[0])))
-for i, sublist in enumerate(heating_rate_samples_no_nans):
-    interpolator = interp1d(scaled_halo_radii_samples_no_nans[i], sublist, kind='linear', bounds_error=False)
+interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
+for i, sublist in enumerate(heating_rate_samples):
+    interpolator = interp1d(scaled_halo_radii_samples[i], sublist, kind='linear', bounds_error=False)
     interpolated_heating[i] = interpolator(common_scaled_radii)
 interpolated_heating[np.isnan(interpolated_heating)] = 0
 
 # calculating the mean heating rate
-mean_heating_samples = np.mean(interpolated_heating, axis=0)
+## EITHER: the true mean, when sampling from the true jet power probability distribution
+# mean_heating_samples = np.mean(interpolated_heating, axis=0)
+## OR: the weighted mean, when sampling uniformly
+weighted_interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
+sum_probs = 0
+for i in range(len(heating_rate_samples)):
+    probs = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
+    weighted_interpolated_heating[i] = np.multiply(interpolated_heating[i], probs)
+    sum_probs += probs
+mean_heating_samples = np.sum(weighted_interpolated_heating, axis=0)/sum_probs
 
 # calculating the heating -- cooling difference
 heating_cooling_diff_samples = []
@@ -533,27 +529,27 @@ sound_speed_profile_kms = [i/10**3 for i in sound_speed_profile]
 
 # considering a duty cycle = 1  (heating dominated)
 duty_heating_dominated = 1
-heating_rate_duty1_samples_no_nans = [duty_heating_dominated*i/duty for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+heating_rate_duty1_samples = [duty_heating_dominated*i/duty for i in heating_rate_samples]
 mean_heating_duty1_samples = [duty_heating_dominated*i/duty for i in mean_heating_samples]
 # considering a duty cycle = 0.5
 duty_05 = 0.5
-heating_rate_duty05_samples_no_nans = [duty_05*i/duty for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+heating_rate_duty05_samples = [duty_05*i/duty for i in heating_rate_samples]
 mean_heating_duty05_samples = [duty_05*i/duty for i in mean_heating_samples]
 # considering a duty cycle = 0.4
 duty_04 = 0.4
-heating_rate_duty04_samples_no_nans = [duty_04*i/duty for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+heating_rate_duty04_samples = [duty_04*i/duty for i in heating_rate_samples]
 mean_heating_duty04_samples = [duty_04*i/duty for i in mean_heating_samples]
 # considering a duty cycle = 0.3
 duty_03 = 0.3
-heating_rate_duty03_samples_no_nans = [duty_03*i/duty for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+heating_rate_duty03_samples = [duty_03*i/duty for i in heating_rate_samples]
 mean_heating_duty03_samples = [duty_03*i/duty for i in mean_heating_samples]
 # considering a duty cycle = 0.2
 duty_02 = 0.2
-heating_rate_duty02_samples_no_nans = [duty_02*i/duty for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+heating_rate_duty02_samples = [duty_02*i/duty for i in heating_rate_samples]
 mean_heating_duty02_samples = [duty_02*i/duty for i in mean_heating_samples]
 # considering a duty cycle = 0.01  (cooling dominated)
 duty_cooling_dominated = 0.01
-heating_rate_duty001_samples_no_nans = [duty_cooling_dominated*i/duty for i in heating_rate_samples if np.all(np.isnan(i)==False)]
+heating_rate_duty001_samples = [duty_cooling_dominated*i/duty for i in heating_rate_samples]
 mean_heating_duty001_samples = [duty_cooling_dominated*i/duty for i in mean_heating_samples]
 
 # calculating the heating -- cooling difference for each duty cycle
@@ -655,17 +651,17 @@ plt0.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt0.set_yscale('log')
 plt0.set_ylim(10**(-36), 10**(-18))
 plt0.set_ylabel('$\\mathcal{C} \quad [\mathrm{Wm^{-3}}]$', fontsize = 18)
-plt0.legend(title='$N=500, \,\, M_{500} = 5\\times 10^{14} \\mathrm{M}_\\odot;$ \n $c=2.5, \,\, \\alpha=1, \,\, \\eta=1, \,\, d=1, \,\, \\varepsilon=0.5;$ \n $s_Q = -1, \,\, \\theta_\\mathrm{jet} = 8.5^\\circ, \,\, \\theta_\\mathrm{FRI} = 15^\\circ$.')
+plt0.legend(title='$N=500, \,\, M_{500} = 5\\times 10^{14} \\mathrm{M}_\\odot;$ \n $c=2.5, \,\, \\alpha=1, \,\, \\eta=1, \,\, d=1, \,\, \\varepsilon=1;$ \n $s_Q = -1, \,\, \\theta_\\mathrm{jet} = 8.5^\\circ, \,\, \\theta_\\mathrm{FRI} = 15^\\circ$.')
 
 plt1 = plt.subplot(gs[1])
-for i in range(N_no_nans):
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_duty001_samples_no_nans[i], color='turquoise', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_samples_no_nans[i], color='blue', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_duty02_samples_no_nans[i], color='deepskyblue', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_duty03_samples_no_nans[i], color='gold', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_duty04_samples_no_nans[i], color='darkorange', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_duty05_samples_no_nans[i], color='red', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples_no_nans[i], heating_rate_duty1_samples_no_nans[i], color='mediumvioletred', alpha=0.1)
+for i in range(N_prime):
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty001_samples[i], color='turquoise', alpha=0.1)
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_samples[i], color='blue', alpha=0.1)
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty02_samples[i], color='deepskyblue', alpha=0.1)
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty03_samples[i], color='gold', alpha=0.1)
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty04_samples[i], color='darkorange', alpha=0.1)
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty05_samples[i], color='red', alpha=0.1)
+    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty1_samples[i], color='mediumvioletred', alpha=0.1)
 plt1.plot(common_scaled_radii, mean_heating_duty001_samples, color='turquoise', linewidth=2, ls='-.')
 plt1.plot(common_scaled_radii, mean_heating_samples, color='blue', linewidth=2, label='Mean heating', ls='-.')
 plt1.plot(common_scaled_radii, mean_heating_duty02_samples, color='deepskyblue', linewidth=2, ls='-.')
@@ -747,7 +743,7 @@ plt.subplots_adjust(hspace=.4, wspace=.3)
 fig.add_subplot(111, frame_on=False)
 plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
 
-plt.savefig('c25_NFW_d1_e05_thetaJ85_thetaFRI15_sQ1.png', dpi=350)
+plt.savefig('c25_NFW_d1_e1_thetaJ85_thetaFRI15_sQ1.png', dpi=350)
 plt.show()
 
 
