@@ -258,7 +258,7 @@ def inv_distribution(u, xmin, xmax, slope):
 
 # inverse cumulative distribution for a uniform distribution
 def inv_uniform_dist(u, xmin, xmax):
-    return u*(xmax - xmin)
+    return xmin + u*(xmax - xmin)
 
 # power-law slope of source age distribution
 sT = -1
@@ -284,19 +284,23 @@ def t_min(Q, e): # s
 
 # maximum jet power
 Qmax = 10**40 # W
-qmax = 40
+log_Qmax = 40
 # minimum jet power
 Qmin = (2/((4-e)*Gyr))**2*(Omega_F_const_Bicknell2018*c_light*(3-e)*Mstar*Rstar/(4*np.pi*k1)) # W
-qmin = np.log10(Qmin)
+log_Qmin = np.log10(Qmin)
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
 # EITHER: sampling jet powers uniformly; weighting the mean later:
 Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
-# OR: sampling jet powers by their distribution:
+# EITHER: log sampling jet powers uniformly; weighting the mean later:
+# log_Qjet_samples = inv_uniform_dist(u_vals, log_Qmin, log_Qmax)
+# Qjet_samples = [10**i for i in log_Qjet_samples]
+# EITHER: sampling jet powers by their distribution:
 # Qjet_samples = inv_distribution(u_vals, Qmin, Qmax, sQ)
-# Qjet_bins = np.logspace(qmin, qmax, base=10, num=14)
-# Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
+
+Qjet_bins = np.logspace(log_Qmin, log_Qmax, base=10, num=14)
+Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
 
 
 
@@ -309,9 +313,17 @@ tmax = 1*Gyr # s
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
-# source age distribution: P = 1/x
-age_samples = inv_dist_recip(u_vals, tmin, tmax)
-# correction for time to leave central galaxy / bcg
+# EITHER: sampling source ages uniformly; weighting the mean later:
+age_samples = inv_uniform_dist(u_vals, tmin, tmax)
+# EITHER: log sampling source ages uniformly; weighting the mean later:
+# log_age_samples = inv_uniform_dist(u_vals, log_tmin, log_tmax)
+# age_samples = [10**i for i in log_age_samples]
+# EITHER: sampling source ages by their distribution:
+# age_samples = inv_distribution(u_vals, tmin, tmax, sT)
+
+# Removing jets that cannot escape the central galaxy
+
+# time on, subtracting minimum time
 ton_samples = []
 stuck_jet_indices = []
 for i in range(N):
@@ -320,8 +332,12 @@ for i in range(N):
     elif age_samples[i] <= t_min(Qjet_samples[i], e):
         stuck_jet_indices.append(i)
 N_prime = len(ton_samples)
-Qjet_samples_no_correction = [i for i in Qjet_samples]
+
+# updating each list to remove stuck jets
+age_samples = [i for j, i in enumerate(age_samples) if j not in stuck_jet_indices]
 Qjet_samples = [i for j, i in enumerate(Qjet_samples) if j not in stuck_jet_indices]
+# how many jets fail to make it out of the central galaxy / bcg
+print(str(N-N_prime) + ' jets do not make it out of the galaxy')
 
 ton_samples_Myr = [i/Myr for i in ton_samples]
 age_samples_Myr = [i/Myr for i in age_samples]
@@ -491,7 +507,9 @@ interpolated_heating[np.isnan(interpolated_heating)] = 0
 weighted_interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
 sum_probs = 0
 for i in range(len(heating_rate_samples)):
-    probs = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
+    probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
+    probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**sT
+    probs = probs_jets*probs_ages
     weighted_interpolated_heating[i] = np.multiply(interpolated_heating[i], probs)
     sum_probs += probs
 mean_heating_samples = np.sum(weighted_interpolated_heating, axis=0)/sum_probs
