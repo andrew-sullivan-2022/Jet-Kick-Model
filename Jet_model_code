@@ -291,13 +291,13 @@ log_Qmin = np.log10(Qmin)
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
-# EITHER: sampling jet powers uniformly; weighting the mean later:
-Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
-# EITHER: log sampling jet powers uniformly; weighting the mean later:
-# log_Qjet_samples = inv_uniform_dist(u_vals, log_Qmin, log_Qmax)
-# Qjet_samples = [10**i for i in log_Qjet_samples]
 # EITHER: sampling jet powers by their distribution:
 # Qjet_samples = inv_distribution(u_vals, Qmin, Qmax, sQ)
+# EITHER: sampling jet powers uniformly; weighting the mean later:
+# Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
+# EITHER: log sampling jet powers uniformly; weighting the mean later:
+log_Qjet_samples = inv_uniform_dist(u_vals, log_Qmin, log_Qmax)
+Qjet_samples = [10**i for i in log_Qjet_samples]
 
 Qjet_bins = np.logspace(log_Qmin, log_Qmax, base=10, num=14)
 Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
@@ -313,13 +313,13 @@ tmax = 1*Gyr # s
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
-# EITHER: sampling source ages uniformly; weighting the mean later:
-age_samples = inv_uniform_dist(u_vals, tmin, tmax)
-# EITHER: log sampling source ages uniformly; weighting the mean later:
-# log_age_samples = inv_uniform_dist(u_vals, log_tmin, log_tmax)
-# age_samples = [10**i for i in log_age_samples]
 # EITHER: sampling source ages by their distribution:
 # age_samples = inv_distribution(u_vals, tmin, tmax, sT)
+# EITHER: sampling source ages uniformly; weighting the mean later:
+# age_samples = inv_uniform_dist(u_vals, tmin, tmax)
+# EITHER: log sampling source ages uniformly; weighting the mean later:
+log_age_samples = inv_uniform_dist(u_vals, log_tmin, log_tmax)
+age_samples = [10**i for i in log_age_samples]
 
 # Removing jets that cannot escape the central galaxy
 
@@ -503,16 +503,26 @@ interpolated_heating[np.isnan(interpolated_heating)] = 0
 # calculating the mean heating rate
 ## EITHER: the true mean, when sampling from the true jet power probability distribution
 # mean_heating_samples = np.mean(interpolated_heating, axis=0)
-## OR: the weighted mean, when sampling uniformly
+## EITHER: the weighted mean, when sampling log-uniformly
 weighted_interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
 sum_probs = 0
 for i in range(len(heating_rate_samples)):
-    probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
-    probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**sT
+    probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**(sQ+1)
+    probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**(sT+1)
     probs = probs_jets*probs_ages
     weighted_interpolated_heating[i] = np.multiply(interpolated_heating[i], probs)
     sum_probs += probs
 mean_heating_samples = np.sum(weighted_interpolated_heating, axis=0)/sum_probs
+## EITHER: the weighted mean, when sampling uniformly
+# weighted_interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
+# sum_probs = 0
+# for i in range(len(heating_rate_samples)):
+#     probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
+#     probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**sT
+#     probs = probs_jets*probs_ages
+#     weighted_interpolated_heating[i] = np.multiply(interpolated_heating[i], probs)
+#     sum_probs += probs
+# mean_heating_samples = np.sum(weighted_interpolated_heating, axis=0)/sum_probs
 
 # calculating the heating -- cooling difference
 heating_cooling_diff_samples = []
