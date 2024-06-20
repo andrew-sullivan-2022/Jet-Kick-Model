@@ -375,11 +375,11 @@ def x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta):
 
 # flaring jet time offset
 def t_fj(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta): # s
-    return (2/3)*(x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)/R_eq(Q, thetaJ, s0, c, a, d, e, eta))*t_eq(Q, thetaJ, s0, c, a, d, e, eta)
+    return (1/2)*((4-e)/(3-e))*(x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)/R_eq(Q, thetaJ, s0, c, a, d, e, eta))*t_eq(Q, thetaJ, s0, c, a, d, e, eta)
 
 # jet length during 'flaring jet phase'
 def R_fj_phase(t, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta): # m
-    return R_eq(Q, thetaJ, s0, c, a, d, e, eta) - x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta) + x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)*((t - t_eq(Q, thetaJ, s0, c, a, d, e, eta) + t_fj(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta))/t_fj(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta))**(1/3)
+    return R_eq(Q, thetaJ, s0, c, a, d, e, eta) - x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta) + x_eq(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)*((t - t_eq(Q, thetaJ, s0, c, a, d, e, eta) + t_fj(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta))/t_fj(Q, thetaJ, thetaFRI, s0, c, a, d, e, eta))**(1/(3-e))
 
 
 # the jet's solid angle and filling factor:
