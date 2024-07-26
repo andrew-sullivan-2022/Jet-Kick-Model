@@ -392,7 +392,8 @@ stuck_jet_indices = stuck_jet_indices[~np.isnan(stuck_jet_indices)]
 N_prime = len(ton_samples)
 escape_numbers = [N_prime, N-N_prime]
 escape_fractions = np.round(np.multiply(100, [N_prime/N, (N-N_prime)/N]), decimals=2)
-print(str(N-N_prime) + ' jets did not make it out of the galaxy')
+print(str(N) + ' jets escape from the galaxy')
+print(str(N-N_prime) + ' jets do not escape from the galaxy')
 
 # updating jet powers and source ages to remove stuck jets
 Qjet_samples = [i for j, i in enumerate(raw_Qjet_samples) if j not in stuck_jet_indices]
@@ -550,6 +551,8 @@ for i in range(N_prime):
 N_flare = N_prime - len(does_not_flare_indices)
 flaring_numbers = [N_flare, N_prime-N_flare]
 flaring_fractions = np.round(np.multiply(100, [N_flare/N_prime, (N_prime-N_flare)/N_prime]), decimals=2)
+print(str(N_flare) + ' jets reach pressure equilibrium and flare')
+print(str(N_prime-N_flare) + ' jets never flare')
 
 # jet lengths of sources that do not flare
 Rjet_samples_no_flare = [i for j, i in enumerate(Rjet_samples) if j in does_not_flare_indices]
@@ -560,6 +563,7 @@ tfj_samples_Myr = np.divide(tfj_samples, Myr)
 Req_samples_kpc = np.divide(Req_samples, kpc)
 Rjet_samples_kpc = np.divide(Rjet_samples, kpc)
 Rjet_samples_no_flare_kpc = np.divide(Rjet_samples_no_flare, kpc)
+print('the largest jet reaches: ' + str(max(Rjet_samples_kpc)) + 'kpc')
 
 # histograms for jet lengths and equilibrium jet lengths
 Rjet_bins = np.logspace(np.log10(min(Req_samples_kpc)), np.log10(max(Rjet_samples_kpc)), base=10, num=12)
