@@ -683,7 +683,6 @@ plt10.set_xscale('log')
 plt10.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
 plt10.set_ylabel('$R_\\mathrm{jet} \\quad [\\mathrm{kpc}]$', fontsize = 18)
 plt10.set_yscale('log')
-plt10.set_ylim(0.5*0.1, 200)
 cbar10 = fig.colorbar(sc10, ax=plt10)
 cbar10.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
 
