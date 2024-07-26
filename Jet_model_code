@@ -1,30 +1,33 @@
 import numpy as np
-import pandas as pd
+import numba
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import scipy.integrate as int
-import scipy.misc
-import scipy.misc
 from scipy.interpolate import interp1d
 from scipy.optimize import curve_fit
-from scipy.stats import gaussian_kde
+from pydl.pydlutils.cooling import read_ds_cooling
+
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
 
 
 
-
-
-np.random.seed(15)
-
 ## BUILDING THE JET MODEL
+
+## Number of radio samples
+np.random.seed(15)
+N = 30000
+
+
 
 ## Galaxy cluster halocentric radius
 
 # scale-free radial scale
-radius_bins = 1000
+radius_bins = 500
 s = np.logspace(-4, 1, base=10, num=radius_bins)
 s_ = np.logspace(-4, 1, base=10, num=radius_bins)
 
@@ -102,16 +105,19 @@ environ_params = [c, a, d, e, eta]
 # overdensity criterion
 Delta = 500
 # virial mass
-Mvir = 5*10**14*Msol # kg
+Mvir = 10**14.5*Msol # kg
 # virial radius
 rvir = (3*Mvir/(4*np.pi*Delta*rho_crit(h)))**(1/3) # m
 # virial temperature
 Tvir = (1/3)*(mu*mp/kB)*G*Mvir/rvir # K
 # virial pressure
-pvir = (kB*Tvir/(mu*mp))*f_b*Delta*rho_crit(h) # kg m^-1 s^-2 = Pa
+pvir = (kB*Tvir/(mu*mp))*f_b*Delta*rho_crit(h) # Pa = kg m^-1 s^-2
 # virial circular velocity
 vcvir = (G*Mvir/rvir)**0.5 # m s^-1
-
+print('the virial mass is: M500 = ' + str(Mvir/Msol) + ' Msol')
+print('the virial radius is: r500 = ' + str(rvir/kpc) + ' kpc')
+print('the virial temperature is: T500 = ' + str(Tvir) + ' K')
+print('the virial pressure is: p500 = ' + str(pvir) + ' Pa')
 
 
 ## Stellar parameters
@@ -207,21 +213,20 @@ def number_density(s, c, a, d, e, eta): # m^-3
 
 
 # loading the intracluster gas profiles, given a choice in environmental parameters
-gas_density_profile = []
-temperature_profile = []
-sound_speed_profile = []
-number_density_profile = []
-for i in range(len(s)):
-    gas_density_profile.append(gas_density(s[i], *environ_params))
-    temperature_profile.append(temperature(s[i], *environ_params))
-    sound_speed_profile.append(sound_speed(s[i], *environ_params))
-    number_density_profile.append(number_density(s[i], *environ_params))
+gas_density_profile = np.empty(radius_bins)
+temperature_profile = np.empty(radius_bins)
+sound_speed_profile = np.empty(radius_bins)
+number_density_profile = np.empty(radius_bins)
+for i in range(radius_bins):
+    gas_density_profile[i] = gas_density(s[i], *environ_params)
+    temperature_profile[i] = temperature(s[i], *environ_params)
+    sound_speed_profile[i] = sound_speed(s[i], *environ_params)
+    number_density_profile[i] = number_density(s[i], *environ_params)
 
 
 
 ## Cooling function
 
-from pydl.pydlutils.cooling import read_ds_cooling
 abundance_file='mzero.cie' # metallicity for Sutherland & Dopita (1993) cooling function, here correpsonding to solar abundances
 
 # interperlating from the gas temperature to the cooling function
@@ -232,16 +237,13 @@ Lambda_cool_interp = [10**i for i in logLambda_cool_interp] # W m^3
 # cooling time
 t_cool_profile = (3/2)*kB*np.divide(temperature_profile, np.multiply(Lambda_cool_interp, number_density_profile)) # s
 # hydrogen number density
-hydrogen_density_profile = [(4/9)*i for i in number_density_profile] # m^-3
+hydrogen_density_profile = np.multiply((4/9), number_density_profile) # m^-3
 # cooling function
 cooling_rate = np.multiply(np.multiply(hydrogen_density_profile, hydrogen_density_profile), Lambda_cool_interp) # W m^-3
 
 
 
 ## Population distributions
-
-# number of samples
-N = 25000
 
 # normalisation coefficient for P = x^slope
 def prob_normalisation(xmin, xmax, slope):
@@ -250,12 +252,43 @@ def prob_normalisation(xmin, xmax, slope):
     else:
         return (slope+1)*(xmax**(slope+1) - xmin**(slope+1))**(-1)
 
-# inverse cumualtive probability distribution for a P = x^slope
+# normalisation coefficient for P = x^slope1, P = x^slope2, with a cut-off at Qcut
+def prob_normalisation_dual_slope(xmin, xmax, xcut, slope1, slope2):
+    if slope1 == -1:
+        A2 = (xcut**(slope2+1)*np.log(xcut/xmin) + (xmax**(slope2+1) - xcut**(slope2+1))/(1+slope2))**(-1)
+        A1 = A2*(xcut**(slope2+1))
+        return [A1, A2]
+    else:
+        A2 = (xcut**(slope2-slope1)*(xcut**(slope1+1) - xmin**(slope1+1))/(1+slope1) + (xmax**(slope2+1) - xcut**(slope2+1))/(1+slope2))**(-1)
+        A1 = A2*(xcut**(slope2-slope1))
+        return [A1, A2]
+
+# inverse cumualtive probability distribution for P = x^slope
 def inv_distribution(u, xmin, xmax, slope):
     if slope == -1:
         return (xmin*np.exp(u/prob_normalisation(xmin, xmax, slope)))
     else:
         return (xmin**(slope+1) + u*(slope+1)/prob_normalisation(xmin, xmax, slope))**(1/(slope+1))
+
+# inverse cumulative probability distribution for P = x^slope1, P = x^slope2, with a cut-off at Qcut
+def inv_distribution_dual_slope(u, xmin, xmax, xcut, slope1, slope2):
+    A1 = prob_normalisation_dual_slope(xmin, xmax, xcut, slope1, slope2)[0]
+    A2 = prob_normalisation_dual_slope(xmin, xmax, xcut, slope1, slope2)[1]
+    output = np.empty(N)
+    if slope1 == -1:
+        for i in range(N):
+            if u[i] <= A1*np.log(xcut/xmin):
+                output[i] = (xmin * np.exp(u[i]/A1))
+            elif u[i] > A1*np.log(xcut/xmin):
+                output[i] = (xcut**(slope2+1) + ((slope2+1)/A2)*(u[i] - A1*np.log(xcut/xmin)))**(1/(slope2+1))
+        return output
+    else:
+        for i in range(N):
+            if u[i] <= (xcut**(slope1+1) - xmin**(slope1+1))*(A1/(slope1+1)):
+                output[i] = (xmin**(slope1+1) + u[i]*(slope1+1)/A1)**(1/(slope1+1))
+            elif u[i] > (xcut**(slope1+1) - xmin**(slope1+1))*(A1/(slope1+1)):
+                output[i] = (xcut**(slope2+1) + u[i]*(slope2+1)/A2 - (A1*(slope1+1)/(A2*(slope2+1)))*(xcut**(slope1+1) - xmin**(slope1+1)))**(1/(slope2+1))
+        return output
 
 # inverse cumulative distribution for a uniform distribution
 def inv_uniform_dist(u, xmin, xmax):
@@ -263,99 +296,119 @@ def inv_uniform_dist(u, xmin, xmax):
 
 # power-law slope of source age distribution
 sT = -1
-# power-law slope of source power distribution
-sQ = -1
+# power-law slope of source power; low jet power regime
+sQ1 = -1
+# power-law slope of source power; high jet power regime
+sQ2 = -1.5
 # jet parameters, in list form
 jet_params = [thetaJ, thetaFRI]
-source_pop_params = [duty, sQ, sT]
+source_pop_params = [duty, sQ1, sQ2, sT]
 
 
 
-## Time offset for the jet to leave central galaxy / bcg
+## Time offset for the jet to leave central galaxy
 
-# constraining the relationship between solid angle and the fraction of gas-to-stellar density from Bicknell+18
-Omega_F_const_Bicknell2018 = (((4)/2)*2.29*Myr)**2*(k1*10**38*4*np.pi/(c_light*(3)*Mstar*Rstar))
-# time offset as a function of jet power
+# time offset as a function of jet power, calibrated from Bicknell+2018
 def t_min(Q, e): # s
-    return (2/(4-e))*(Omega_F_const_Bicknell2018*c_light*(3-e)*Mstar*Rstar/(4*np.pi*k1*Q))**(1/2)
+    return 2.29*Myr*(4/(4-e))*(10**38/Q)**0.5*((3-e)/3)**0.5
 
 
 
 ## Sampling the jet power distribution
 
-# maximum jet power; FR-I case:
-Qmax = 10**40 # W
-log_Qmax = 40
-# maximum jet power; FR-II case:
-# Qmax = 10**37 # W
-# log_Qmax = 37
-
-# minimum jet power
-Qmin = (2/((4-e)*Gyr))**2*(Omega_F_const_Bicknell2018*c_light*(3-e)*Mstar*Rstar/(4*np.pi*k1)) # W
-log_Qmin = np.log10(Qmin)
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
-# EITHER: sampling jet powers by their distribution:
-Qjet_samples = inv_distribution(u_vals, Qmin, Qmax, sQ)
-# EITHER: sampling jet powers uniformly; weighting the mean later:
-# Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
-# EITHER: log sampling jet powers uniformly; weighting the mean later:
-# log_Qjet_samples = inv_uniform_dist(u_vals, log_Qmin, log_Qmax)
-# Qjet_samples = [10**i for i in log_Qjet_samples]
+# maximum jet power
+Qmax = 10**40 # W
+log_Qmax = 40
+# minimum jet power
+Qmin = 10**38*((4/(4-e))*(2.29*Myr)/Gyr)**2*((3-e)/3) # W
+log_Qmin = np.log10(Qmin)
 
-# histogram bins for jet power
+## CHOICE REQUIRED: sampling the jet power distribution
+
+# A) sampling by a power-law probability distribution:
+# Qjet_samples = inv_distribution(u_vals, Qmin, Qmax, sQ1)
+
+# B) sampling by a dual power-law probability distribution:
+Qcut = 10**38 # W
+raw_Qjet_samples = inv_distribution_dual_slope(u_vals, Qmin, Qmax, Qcut, sQ1, sQ2)
+
+# C) sampling by a uniform probability distribution
+# Qmin = 10**39
+# log_Qmin = 39
+# Qmax = 10**40
+# log_Qmax = 40
+# Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
+
+# histogram for jet powers
 Qjet_bins = np.logspace(log_Qmin, log_Qmax, base=10, num=14)
-Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
+raw_Qjet_hist, _ = np.histogram(raw_Qjet_samples, bins=Qjet_bins)
 
 
 
 ## Sampling the source age distribution
 
-# minimum source age
-tmin = 1*Myr # s
-log_tmin = np.log10(tmin)
-# maximum source age
-tmax = 1*Gyr # s
-log_tmax = np.log10(tmax)
 # random real numbers on the interval [0, 1]
 u_vals = np.random.rand(N)
 
-# EITHER: sampling source ages by their distribution:
-age_samples = inv_distribution(u_vals, tmin, tmax, sT)
-# EITHER: sampling source ages uniformly; weighting the mean later:
-# age_samples = inv_uniform_dist(u_vals, tmin, tmax)
-# EITHER: log sampling source ages uniformly; weighting the mean later:
-# log_age_samples = inv_uniform_dist(u_vals, log_tmin, log_tmax)
-# age_samples = [10**i for i in log_age_samples]
+# minimum source age
+tmin = 1*Myr # s
+log_tmin = np.log10(tmin/Myr)
+# maximum source age
+tmax = 1*Gyr # s
+log_tmax = np.log10(tmax/Myr)
+
+# sampling source ages by their distribution:
+raw_age_samples = inv_distribution(u_vals, tmin, tmax, sT)
+raw_age_samples_Myr = np.divide(raw_age_samples, Myr)
+
+# histogram for source ages
+age_bins = np.logspace(log_tmin, log_tmax, base=10, num=14)
+raw_age_hist, _ = np.histogram(raw_age_samples_Myr, bins=age_bins)
 
 
-
-## Removing jets that cannot escape the central galaxy
+# Removing jets that cannot escape the central galaxy
 
 # time on, subtracting minimum time
-ton_samples = []
-stuck_jet_indices = []
+ton_samples = np.empty(N)
+tesc_samples = np.empty(N)
+stuck_jet_indices = np.empty(N)
 for i in range(N):
-    if age_samples[i] > t_min(Qjet_samples[i], e):
-        ton_samples.append(age_samples[i] - t_min(Qjet_samples[i], e))
-    elif age_samples[i] <= t_min(Qjet_samples[i], e):
-        stuck_jet_indices.append(i)
-N_prime = len(ton_samples)
+    if raw_age_samples[i] > t_min(raw_Qjet_samples[i], e):
+        stuck_jet_indices[i] = np.nan
+        tesc_samples[i] = t_min(raw_Qjet_samples[i], e)
+        ton_samples[i] = raw_age_samples[i] - t_min(raw_Qjet_samples[i], e)
+    elif raw_age_samples[i] <= t_min(raw_Qjet_samples[i], e):
+        stuck_jet_indices[i] = i
+        tesc_samples[i] = np.nan
+        ton_samples[i] = np.nan
+tesc_samples = tesc_samples[~np.isnan(tesc_samples)]
+ton_samples = ton_samples[~np.isnan(ton_samples)]
+stuck_jet_indices = stuck_jet_indices[~np.isnan(stuck_jet_indices)]
 
-# updating each list to remove stuck jets
-age_samples = [i for j, i in enumerate(age_samples) if j not in stuck_jet_indices]
-Qjet_samples = [i for j, i in enumerate(Qjet_samples) if j not in stuck_jet_indices]
-# how many jets fail to make it out of the central galaxy / bcg
+# number and fraction of jets that escape the central galaxy
+N_prime = len(ton_samples)
+escape_numbers = [N_prime, N-N_prime]
+escape_fractions = np.round(np.multiply(100, [N_prime/N, (N-N_prime)/N]), decimals=2)
 print(str(N-N_prime) + ' jets did not make it out of the galaxy')
 
-# converting to astrophysical units
-ton_samples_Myr = [i/Myr for i in ton_samples]
-age_samples_Myr = [i/Myr for i in age_samples]
+# updating jet powers and source ages to remove stuck jets
+Qjet_samples = [i for j, i in enumerate(raw_Qjet_samples) if j not in stuck_jet_indices]
+log_Qjet_samples = [np.log10(i) for i in Qjet_samples]
+age_samples = [i for j, i in enumerate(raw_age_samples) if j not in stuck_jet_indices]
 
-# histogram bins for jet age and on-times
-ton_bins = np.linspace(tmin/Myr, tmax/Myr, num=14)
-ton_hist, _ = np.histogram(ton_samples_Myr, bins=ton_bins)
+# conversion to astrophysical units
+age_samples_Myr = np.divide(age_samples, Myr)
+tesc_samples_Myr = np.divide(tesc_samples, Myr)
+ton_samples_Myr = np.divide(ton_samples, Myr)
+
+# histograms for jet on-times
+ton_hist, _ = np.histogram(ton_samples_Myr, bins=age_bins)
+# updating histograms for jet powers and source ages, with stuck jets removed
+Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
+age_hist, _ = np.histogram(age_samples_Myr, bins=age_bins)
 
 
 
@@ -429,37 +482,46 @@ def jet_heating_rate(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta): # W m^-3
     R = np.logspace(np.log10(rres), np.log10(Rjet), base=10, num=150)
     return duty*Phi(R, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)*Q/jet_filling_vol(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)
 
-# velocity kick
-def velocity_kick(energy, s, c, a, d, e, eta): # m s^-1
-    return (gamma-1)*energy/(eq_pressure_deriv(s, c, a, d, e, eta) + 2*gamma*eq_pressure(s, c, a, d, e, eta)/(s*rvir)) # m s^-1
+# gas velocity kick
+def velocity_kick_over_energy(s, c, a, d, e, eta): # m s^-1
+    return (gamma-1)/((eq_pressure_deriv(s, c, a, d, e, eta) + 2*gamma*eq_pressure(s, c, a, d, e, eta)/(s*rvir))) # m s^-1
+velocity_kick_over_energy_profile = np.empty(radius_bins)
+for i in range(radius_bins):
+    velocity_kick_over_energy_profile[i] = velocity_kick_over_energy(s[i], *environ_params)
 
-# Mach number
-def Mach_number(vel, s, c, a, d, e, eta):
-    return vel/sound_speed(s, c, a, d, e, eta)
+# non-thermal pressure
+def NTP(mach):
+    return (gamma*mach**2)/(3 + gamma*mach**2)
+# vectorising the function
+vNTP = np.vectorize(NTP)
 
 
 
 ## Sampling the jet evolution model
 
 # appending the jet length, equilibrium time, flaring jet offset time and jet length at pressure equilibrium
-teq_samples = []
-tfj_samples = []
-Req_samples = []
-Rjet_samples = []
+teq_samples = np.empty(N_prime)
+tfj_samples = np.empty(N_prime)
+Req_samples = np.empty(N_prime)
+Rjet_samples = np.empty(N_prime)
+does_not_flare_indices = np.empty(N_prime)
 for i in range(N_prime):
-    teq_samples.append(t_eq(Qjet_samples[i], thetaJ, s0, *environ_params))
-    tfj_samples.append(t_fj(Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params))
+    teq_samples[i] = t_eq(Qjet_samples[i], thetaJ, s0, *environ_params)
+    tfj_samples[i] = t_fj(Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
     if ton_samples[i] > teq_samples[i]:
-        Rjet_samples.append(R_fj_phase(ton_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params))
-        Req_samples.append(R_eq(Qjet_samples[i], thetaJ, s0, *environ_params))
+        does_not_flare_indices[i] = np.nan
+        Rjet_samples[i] = R_fj_phase(ton_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
+        Req_samples[i] = R_eq(Qjet_samples[i], thetaJ, s0, *environ_params)
     elif ton_samples[i] <= teq_samples[i]:
-        Rjet_samples.append(R_jet_phase(ton_samples[i], Qjet_samples[i], thetaJ, s0, *environ_params))
-        Req_samples.append(np.nan)
+        does_not_flare_indices[i] = i
+        Rjet_samples[i] = R_jet_phase(ton_samples[i], Qjet_samples[i], thetaJ, s0, *environ_params)
+        Req_samples[i] = np.nan
+does_not_flare_indices = does_not_flare_indices[~np.isnan(does_not_flare_indices)]
 
 # appending the filling factor, half-opening angle and scaled halo radius
-filling_factor_samples = []
-half_angle_samples = []
-scaled_halo_radii_samples = []
+filling_factor_samples = np.empty((N_prime, 150))
+half_angle_samples = np.empty((N_prime, 150))
+scaled_halo_radii_samples = np.empty((N_prime, 150))
 for i in range(N_prime):
     if ton_samples[i] > teq_samples[i]:
         Rjet_halo_radii = np.logspace(np.log10(rres), np.log10(Rjet_samples[i]), base=10, num=150)
@@ -467,243 +529,298 @@ for i in range(N_prime):
         flaring_jet_phase_steps = round(150*(np.log10(Rjet_samples[i]) - np.log10(Req_samples[i]))/(np.log10(Rjet_samples[i]) + np.log10(rres)))
         jet_phase_radii = np.logspace(np.log10(rres), np.log10(Req_samples[i]), base=10, num=jet_phase_steps)
         flaring_jet_phase_radii = np.logspace(np.log10(Req_samples[i]), np.log10(Rjet_samples[i]), base=10, num=flaring_jet_phase_steps)
-        scaled_halo_radii_samples.append(np.divide(Rjet_halo_radii, rvir))
+        scaled_halo_radii_samples[i] = np.divide(Rjet_halo_radii, rvir)
 
         jet_phase_filling_factor = [1 - np.cos(thetaJ)]*jet_phase_steps
         flaring_jet_phase_filling_factor = filling_factor(flaring_jet_phase_radii, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
         jet_phase_half_angle = [thetaJ]*jet_phase_steps
         flaring_jet_half_angle = half_opening_angle(flaring_jet_phase_radii, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
 
-        filling_factor_samples.append([*jet_phase_filling_factor, *flaring_jet_phase_filling_factor])
-        half_angle_samples.append([*jet_phase_half_angle, *flaring_jet_half_angle])
+        filling_factor_samples[i] = [*jet_phase_filling_factor, *flaring_jet_phase_filling_factor]
+        half_angle_samples[i] = [*jet_phase_half_angle, *flaring_jet_half_angle]
     elif ton_samples[i] <= teq_samples[i]:
         Rjet_halo_radii = np.logspace(np.log10(rres), np.log10(Rjet_samples[i]), base=10, num=150)
-        scaled_halo_radii_samples.append(np.divide(Rjet_halo_radii, rvir))
+        scaled_halo_radii_samples[i] = np.divide(Rjet_halo_radii, rvir)
 
-        filling_factor_samples.append([1 - np.cos(thetaJ)]*150)
-        half_angle_samples.append([thetaJ]*150)
+        filling_factor_samples[i] = [1 - np.cos(thetaJ)]*150
+        half_angle_samples[i] = [thetaJ]*150
 
-# converting to astrophysical units
-teq_samples_Myr = [i/Myr for i in teq_samples]
-tfj_samples_Myr = [i/Myr for i in tfj_samples]
-Req_samples_kpc = [i/kpc for i in Req_samples if np.isnan(i)==False]
-Rjet_samples_kpc = [i/kpc for i in Rjet_samples]
+# number and fraction of jet sources that flare
+#Req_samples = Req_samples[~np.isnan(Req_samples)]
+N_flare = N_prime - len(does_not_flare_indices)
+flaring_numbers = [N_flare, N_prime-N_flare]
+flaring_fractions = np.round(np.multiply(100, [N_flare/N_prime, (N_prime-N_flare)/N_prime]), decimals=2)
 
-# histogram bins for jet total and equilibrium lengths
-Rjet_bins = np.logspace(np.log10(min(Rjet_samples_kpc)), np.log10(max(Rjet_samples_kpc)), base=10, num=12)
+# jet lengths of sources that do not flare
+Rjet_samples_no_flare = [i for j, i in enumerate(Rjet_samples) if j in does_not_flare_indices]
+
+# conversion to astrophysical units
+teq_samples_Myr = np.divide(teq_samples, Myr)
+tfj_samples_Myr = np.divide(tfj_samples, Myr)
+Req_samples_kpc = np.divide(Req_samples, kpc)
+Rjet_samples_kpc = np.divide(Rjet_samples, kpc)
+Rjet_samples_no_flare_kpc = np.divide(Rjet_samples_no_flare, kpc)
+
+# histograms for jet lengths and equilibrium jet lengths
+Rjet_bins = np.logspace(np.log10(min(Req_samples_kpc)), np.log10(max(Rjet_samples_kpc)), base=10, num=12)
 Rjet_hist, _ = np.histogram(Rjet_samples_kpc, bins=Rjet_bins)
-Req_bins = np.logspace(np.log10(min(Req_samples_kpc)), np.log10(max(Req_samples_kpc)), base=10, num=12)
-Req_hist, _ = np.histogram(Req_samples_kpc, bins=Req_bins)
+Req_hist, _ = np.histogram(Req_samples_kpc, bins=Rjet_bins)
+Rjet_no_flare_hist, _ = np.histogram(Rjet_samples_no_flare_kpc, bins=Rjet_bins)
 
 
 
-## Calculating the mean heating rates
+## PLOTTING
+
+## Plot showing the predictions of the jet heating model
+
+# - jet power distribution
+# - source age distribution
+# - fraction of sources that escape the central galaxy
+# - jet length at pressure equilibrium
+# - fraction of sources that flare
+# - final jet lengths
+
+fig = plt.figure(figsize=[15, 15])
+gs = gridspec.GridSpec(4, 3)
+
+plt0 = plt.subplot(gs[0])
+plt0.bar(Qjet_bins[:-1], raw_Qjet_hist, width=np.diff(Qjet_bins), alpha=1, color='rebeccapurple', edgecolor='black', align='edge', label='Sampled population')
+plt0.bar(Qjet_bins[:-1], Qjet_hist, width=np.diff(Qjet_bins), alpha=1, color='slateblue', edgecolor='black', align='edge', label='Sources that escape the galaxy')
+plt0.set_xscale('log')
+plt0.set_xlabel('$Q_\\mathrm{jet} \\quad [\\mathrm{W}]$', fontsize = 18)
+plt0.set_ylabel('Number of sources', fontsize = 18)
+plt0.set_ylim(0, N/5)
+plt0.legend()
+
+plt1 = plt.subplot(gs[1])
+plt1.bar(age_bins[:-1], raw_age_hist, width=np.diff(age_bins), alpha=1, color='rebeccapurple', edgecolor='black', align='edge', label='Sampled population')
+plt1.bar(age_bins[:-1], age_hist, width=np.diff(age_bins), alpha=1, color='slateblue', edgecolor='black', align='edge', label='Sources that escape the galaxy')
+plt1.set_xscale('log')
+plt1.set_xlabel('$t_\\mathrm{age} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt1.set_ylabel('Number of sources', fontsize = 18)
+plt1.set_ylim(0, N/5)
+plt1.legend()
+
+plt2 = plt.subplot(gs[2])
+bar = plt2.bar(['Escapes the galaxy', 'Does not escape the galaxy'], escape_numbers, color=['slateblue', 'rebeccapurple'])
+plt2.set_ylabel('Number of sources', fontsize = 18)
+plt2.set_ylim(0, N)
+ax2_2 = plt2.twinx()
+ax2_2.set_ylim(0, 100)
+ax2_2.set_ylabel('Percentage (%)', fontsize = 18)
+for bar, percentage in zip(bar, escape_fractions):
+    ax2_2.text(bar.get_x() + bar.get_width() / 2, percentage+10, f'{percentage}%', c='black', ha='center', va='top', fontsize=18)
+
+plt3 = plt.subplot(gs[3])
+sc3 = plt3.scatter(ton_samples_Myr, tesc_samples_Myr, alpha=1, c=log_Qjet_samples, cmap='plasma')
+plt3.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt3.set_ylabel('$t_\\mathrm{esc} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt3.set_xscale('log')
+plt3.set_yscale('log')
+cbar3 = fig.colorbar(sc3, ax=plt3)
+cbar3.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
+
+plt4 = plt.subplot(gs[4])
+plt4.bar(age_bins[:-1], ton_hist, width=np.diff(age_bins), alpha=1, color='slateblue', edgecolor='black', align='edge')
+plt4.set_xscale('log')
+plt4.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt4.set_ylabel('Number of sources', fontsize = 18)
+plt4.set_ylim(0, N/5)
+
+plt5 = plt.subplot(gs[5])
+bar = plt5.bar(['Reaches pressure equilibrium\nand flares', 'Does not flare'], flaring_numbers, color=['mediumvioletred', 'plum'])
+plt5.set_ylabel('Number of sources', fontsize = 18)
+plt5.set_ylim(0, N_prime)
+ax5_2 = plt5.twinx()
+ax5_2.set_ylim(0, 100)
+ax5_2.set_ylabel('Percentage (%)', fontsize = 18)
+for bar, percentage in zip(bar, flaring_fractions):
+    ax5_2.text(bar.get_x() + bar.get_width() / 2, percentage+10, f'{percentage}%', c='black', ha='center', va='top', fontsize=18)
+
+plt6 = plt.subplot(gs[6])
+sc6 = plt6.scatter(ton_samples_Myr, teq_samples_Myr, alpha=1, c=log_Qjet_samples, cmap='plasma')
+plt6.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt6.set_ylabel('$t_\\mathrm{eq} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt6.set_xscale('log')
+plt6.set_yscale('log')
+cbar6 = fig.colorbar(sc6, ax=plt6)
+cbar6.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
+
+plt7 = plt.subplot(gs[7])
+plt7.bar(Rjet_bins[:-1], Req_hist, width=np.diff(Rjet_bins), alpha=1, color='mediumvioletred', edgecolor='black', align='edge', label='Sources that escape the galaxy and flare')
+plt7.set_xscale('log')
+plt7.set_xlim(0.5*0.1, 200)
+plt7.set_xlabel('$R_\\mathrm{eq} \\quad [\\mathrm{kpc}]$', fontsize = 18)
+plt7.set_ylabel('Number of sources', fontsize = 18)
+plt7.set_ylim(0, N/5)
+
+plt8 = plt.subplot(gs[8])
+sc8 = plt8.scatter(ton_samples_Myr, tfj_samples_Myr, alpha=1, c=log_Qjet_samples, cmap='plasma')
+plt8.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt8.set_ylabel('$\\Delta t_\\mathrm{fj} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt8.set_xscale('log')
+plt8.set_yscale('log')
+cbar8 = fig.colorbar(sc8, ax=plt8)
+cbar8.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
+
+plt9 = plt.subplot(gs[9])
+plt9.bar(Rjet_bins[:-1], Rjet_hist, width=np.diff(Rjet_bins), alpha=1, color='slateblue', edgecolor='black', align='edge', label='Sources that escape the galaxy')
+plt9.bar(Rjet_bins[:-1], Rjet_no_flare_hist, width=np.diff(Rjet_bins), alpha=1, color='plum', edgecolor='black', align='edge', label='Sources that escape but never flare')
+plt9.set_xscale('log')
+plt9.set_xlim(0.5*0.1, 200)
+plt9.set_xlabel('$R_\\mathrm{jet} \\quad [\\mathrm{kpc}]$', fontsize = 18)
+plt9.set_ylabel('Number of sources', fontsize = 18)
+plt9.set_ylim(0, N/5)
+plt9.legend()
+
+plt10 = plt.subplot(gs[10])
+sc10 = plt10.scatter(ton_samples_Myr, Rjet_samples_kpc, alpha=1, c=log_Qjet_samples, cmap='plasma')
+plt10.set_xscale('log')
+plt10.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
+plt10.set_ylabel('$R_\\mathrm{jet} \\quad [\\mathrm{kpc}]$', fontsize = 18)
+plt10.set_yscale('log')
+plt10.set_ylim(0.5*0.1, 200)
+cbar10 = fig.colorbar(sc10, ax=plt10)
+cbar10.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
+
+norm = mcolors.Normalize(vmin=min(log_Qjet_samples), vmax=max(log_Qjet_samples))
+cmap = cm.plasma
+plt11 = plt.subplot(gs[11])
+# tracing a subsample of evolutionary trajectories
+subsample = 300
+time_resolution = 100
+radial_evolution = np.empty((subsample, time_resolution))
+for i in range(subsample):
+    time_steps = np.logspace(-1, np.log10(ton_samples_Myr[i]), base=10, num=time_resolution)
+    for j in range(time_resolution):
+        if time_steps[j] <= teq_samples_Myr[i]:
+            radial_evolution[i, j] = R_jet_phase(time_steps[j]*Myr, Qjet_samples[i], thetaJ, s0, *environ_params)/kpc
+        elif time_steps[j] > teq_samples_Myr[i]:
+            radial_evolution[i, j] = R_fj_phase(time_steps[j]*Myr, Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)/kpc
+    color = cmap(norm(log_Qjet_samples[i]))
+    plt11.plot(time_steps, radial_evolution[i], zorder=-1, color=color)
+    plt11.scatter(ton_samples_Myr[i], Rjet_samples_kpc[i], s=7, color='red')
+    if i not in does_not_flare_indices:
+        plt11.scatter(teq_samples_Myr[i], Req_samples_kpc[i], s=7, color='black')
+sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+sm.set_array([])
+cbar = fig.colorbar(sm, ax=plt11)
+cbar.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
+plt11.set_xscale('log')
+plt11.set_xlabel('$t \\quad [\\mathrm{Mpc}]$', fontsize = 18)
+plt11.set_xlim(0.2, 1500)
+plt11.set_yscale('log')
+plt11.set_ylim(0.5*0.1, 200)
+plt11.set_ylabel('$R \\quad [\\mathrm{kpc}]$', fontsize = 18)
+plt11.scatter(10**(-10), 10**(-10), s=7, color='black', label='$(t_\\mathrm{eq}, \,\, R_\\mathrm{eq})$')
+plt11.scatter(10**(-10), 10**(-10), s=7, color='red', label='$(t_\\mathrm{on}, \,\, R_\\mathrm{jet})$')
+plt11.legend(loc=4)
+
+plt.subplots_adjust(hspace=.25, wspace=.3)
+fig.add_subplot(111, frame_on=False)
+plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+
+plt.savefig('histograms_M14_5_c25_NFW_d1_e05_thetaJ85_thetaFRI15_sQ1_2.png', dpi=250, bbox_inches='tight')
+print('saved')
+#plt.show()
+
+
+
+## Calculating the heating rates and the heating velocity kicks
 
 # creating a common set of radius values
 common_scaled_radii = np.logspace(np.log10(min(np.concatenate(scaled_halo_radii_samples))), np.log10(max(np.concatenate(scaled_halo_radii_samples))), base=10, num=150)
-
-# calculating the heating rates
-heating_rate_samples = []
-for i in range(N_prime):
-    Rjet_conical_volume = jet_filling_vol(Rjet_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
-    heating_rate_samples.append(np.multiply(filling_factor_samples[i], 2*np.pi*duty*Qjet_samples[i]/Rjet_conical_volume))
-
-# interpolating the heating values
-interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
-interpolated_filling_factor = np.zeros((N_prime, len(filling_factor_samples[0])))
-for i, sublist in enumerate(heating_rate_samples):
-    interpolator = interp1d(scaled_halo_radii_samples[i], sublist, kind='linear', bounds_error=False)
-    interpolated_heating[i] = interpolator(common_scaled_radii)
-interpolated_heating[np.isnan(interpolated_heating)] = 0
-
-# interpolating the filling factor
-for i, sublist in enumerate(filling_factor_samples):
-    interpolator = interp1d(scaled_halo_radii_samples[i], sublist, kind='linear', bounds_error=False)
-    interpolated_filling_factor[i] = interpolator(common_scaled_radii)
-interpolated_filling_factor[np.isnan(interpolated_filling_factor)] = 0
-
-# calculating the mean heating rate
-## EITHER: the true mean, when sampling from the true jet power probability distribution
-mean_heating_duty01 = np.mean(interpolated_heating, axis=0)
-## EITHER: the weighted mean, when sampling log-uniformly
-# weighted_interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
-# sum_probs = 0
-# for i in range(len(heating_rate_samples)):
-#     probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**(sQ+1)
-#     probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**(sT+1)
-#     probs = probs_jets*probs_ages
-#     weighted_interpolated_heating[i] = np.multiply(interpolated_heating[i], probs)
-#     sum_probs += probs
-# mean_heating_duty01 = np.sum(weighted_interpolated_heating, axis=0)/sum_probs
-## EITHER: the weighted mean, when sampling uniformly
-# weighted_interpolated_heating = np.zeros((N_prime, len(heating_rate_samples[0])))
-# sum_probs = 0
-# for i in range(len(heating_rate_samples)):
-#     probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
-#     probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**sT
-#     probs = probs_jets*probs_ages
-#     weighted_interpolated_heating[i] = np.multiply(interpolated_heating[i], probs)
-#     sum_probs += probs
-# mean_heating_duty01 = np.sum(weighted_interpolated_heating, axis=0)/sum_probs
-
 # creating a scaled radius for the cooling-only regime
 cooling_only_scaled_radii = np.logspace(np.log10(max(common_scaled_radii)), 1, base=10, num=50)
 # total radius = heating subjected region + cooling-only region
-tot_common_radius_scaled_radii = [*common_scaled_radii, *cooling_only_scaled_radii[1:]]
+tot_common_scaled_radii = np.array([*common_scaled_radii, *cooling_only_scaled_radii[1:]])
+cluster_radius_steps = len(tot_common_scaled_radii)
 
-# adding in the cooling-only regime to the mean heating
-mean_heating_duty01 = [*mean_heating_duty01, *[0]*(len(cooling_only_scaled_radii)-1)]
+# calculating the heating rates
+duty01_heating_rate_samples = np.empty((N_prime, 150))
+for i in range(N_prime):
+    Rjet_conical_volume = jet_filling_vol(Rjet_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
+    duty01_heating_rate_samples[i] = np.multiply(filling_factor_samples[i], 2*np.pi*duty*Qjet_samples[i]/Rjet_conical_volume)
+# interpolating the heating values
+duty01_interpolated_heating = np.zeros((N_prime, radius_bins))
+for i, subarray in enumerate(duty01_heating_rate_samples):
+    interpolator = interp1d(scaled_halo_radii_samples[i], subarray, kind='linear', bounds_error=False)
+    duty01_interpolated_heating[i] = interpolator(s)
+duty01_interpolated_heating[np.isnan(duty01_interpolated_heating)] = 0
+duty02_interpolated_heating = np.multiply(0.2/duty, duty01_interpolated_heating)
+duty03_interpolated_heating = np.multiply(0.3/duty, duty01_interpolated_heating)
 
+# calculating the mean heating rate
+duty01_mean_heating_rate = np.mean(duty01_interpolated_heating, axis=0)
+duty02_mean_heating_rate = np.multiply(0.2/duty, duty01_mean_heating_rate)
+duty03_mean_heating_rate = np.multiply(0.3/duty, duty01_mean_heating_rate)
 
-
-## Calculating the mean heating rates for different duty cycles
-
-# considering a duty cycle = 0.01  (cooling dominated)
-heating_rate_duty001_samples = [0.01*i/duty for i in heating_rate_samples]
-mean_heating_duty001 = [0.01*i/duty for i in mean_heating_duty01]
-# considering a duty cycle = 0.2
-heating_rate_duty02_samples = [0.2*i/duty for i in heating_rate_samples]
-mean_heating_duty02 = [0.2*i/duty for i in mean_heating_duty01]
-# considering a duty cycle = 0.3
-heating_rate_duty03_samples = [0.3*i/duty for i in heating_rate_samples]
-mean_heating_duty03 = [0.3*i/duty for i in mean_heating_duty01]
-# considering a duty cycle = 0.4
-heating_rate_duty04_samples = [0.4*i/duty for i in heating_rate_samples]
-mean_heating_duty04 = [0.4*i/duty for i in mean_heating_duty01]
-# considering a duty cycle = 0.5
-heating_rate_duty05_samples = [0.5*i/duty for i in heating_rate_samples]
-mean_heating_duty05 = [0.5*i/duty for i in mean_heating_duty01]
-# considering a duty cycle = 1  (heating dominated)
-heating_rate_duty1_samples = [1*i/duty for i in heating_rate_samples]
-mean_heating_duty1 = [1*i/duty for i in mean_heating_duty01]
-
-
-
-## Calculating the mean cooling rates
-
-# calculating the mean filling factor
-## EITHER: the true mean, when sampling from the true jet power probability distribution
-mean_filling_factor = np.mean(interpolated_filling_factor, axis=0)
-## EITHER: the weighted mean, when sampling log-uniformly
-# weighted_interpolated_filling_factor = np.zeros((N_prime, len(filling_factor_samples[0])))
-# sum_probs = 0
-# for i in range(len(filling_factor_samples)):
-#     probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**(sQ+1)
-#     probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**(sT+1)
-#     probs = probs_jets*probs_ages
-#     weighted_interpolated_filling_factor[i] = np.multiply(interpolated_filling_factor[i], probs)
-#     sum_probs += probs
-# mean_filling_factor = np.sum(weighted_interpolated_filling_factor, axis=0)/sum_probs
-## EITHER: the weighted mean, when sampling uniformly
-# weighted_interpolated_filling_factor = np.zeros((N_prime, len(filling_factor_samples[0])))
-# sum_probs = 0
-# for i in range(len(filling_factor_samples)):
-#     probs_jets = prob_normalisation(Qmin, Qmax, sQ)*Qjet_samples[i]**sQ
-#     probs_ages = prob_normalisation(tmin, tmax, sT)*age_samples[i]**sT
-#     probs = probs_jets*probs_ages
-#     weighted_interpolated_filling_factor[i] = np.multiply(interpolated_filling_factor[i], probs)
-#     sum_probs += probs
-# mean_filling_factor = np.sum(weighted_interpolated_filling_factor, axis=0)/sum_probs
-
-# adding in the cooling-only regime to the mean filling factor
-mean_filling_factor = [*mean_filling_factor, *[0]*(len(cooling_only_scaled_radii)-1)]
-
-# calculating the mean cooling rate
-mean_cooling = []
-for i in range(len(tot_common_radius_scaled_radii)):
-    scaled_radius = tot_common_radius_scaled_radii[i]
-    scaled_radius_index = np.argmin(np.abs(s.reshape(radius_bins, 1) - scaled_radius))
-    mean_cooling.append((1 - mean_filling_factor[i])*cooling_rate[scaled_radius_index])
+# calculating the heating-induced velocity kick
+duty01_heating_velocity_kicks_samples = duty01_interpolated_heating*velocity_kick_over_energy_profile
+duty02_heating_velocity_kicks_samples = np.multiply(0.2/duty, duty01_heating_velocity_kicks_samples)
+duty03_heating_velocity_kicks_samples = np.multiply(0.3/duty, duty01_heating_velocity_kicks_samples)
 
 
 
-## Calculating the effective mean volumetric energy injection rates
+## Calculating the cooling rates and the cooling velocity kicks
 
-# for each duty cycle
-mean_volumetric_energy_injection_duty001 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty001, mean_cooling)]
-mean_volumetric_energy_injection_duty01 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty01, mean_cooling)]
-mean_volumetric_energy_injection_duty02 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty02, mean_cooling)]
-mean_volumetric_energy_injection_duty03 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty03, mean_cooling)]
-mean_volumetric_energy_injection_duty04 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty04, mean_cooling)]
-mean_volumetric_energy_injection_duty05 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty05, mean_cooling)]
-mean_volumetric_energy_injection_duty1 = [np.sqrt(i**2 + j**2) for i, j in zip(mean_heating_duty1, mean_cooling)]
+# interpolating the filling factor
+interpolated_filling_factor = np.zeros((N_prime, radius_bins))
+for i, subarray in enumerate(filling_factor_samples):
+    interpolator = interp1d(scaled_halo_radii_samples[i], subarray, kind='linear', bounds_error=False)
+    interpolated_filling_factor[i] = interpolator(s)
+interpolated_filling_factor[np.isnan(interpolated_filling_factor)] = 0
+
+# calculating the cooling rate
+cooling_rate_samples = np.multiply(np.subtract(1, interpolated_filling_factor), cooling_rate)
+
+# calculating the cooling-induced velocity kick
+cooling_velocity_kicks_samples = cooling_rate_samples*velocity_kick_over_energy_profile
 
 
 
-## Calculating the physical properties of the gas
+## Predicting the total velocity kick, the Mach number and the non-thermal pressure
 
-# calculating the gas velocities
-cooling_velocity = []
-heating_velocity_duty001 = []
-heating_velocity_duty01 = []
-heating_velocity_duty02 = []
-heating_velocity_duty03 = []
-heating_velocity_duty04 = []
-heating_velocity_duty05 = []
-heating_velocity_duty1 = []
-for i in range(len(tot_common_radius_scaled_radii)):
-    scaled_radius = tot_common_radius_scaled_radii[i]
-    scaled_radius_index = np.argmin(np.abs(s.reshape(radius_bins, 1) - scaled_radius))
-    cooling_velocity.append(velocity_kick(mean_cooling[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty001.append(velocity_kick(mean_heating_duty001[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty01.append(velocity_kick(mean_heating_duty01[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty02.append(velocity_kick(mean_heating_duty02[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty03.append(velocity_kick(mean_heating_duty03[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty04.append(velocity_kick(mean_heating_duty04[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty05.append(velocity_kick(mean_heating_duty05[i], s[scaled_radius_index], *environ_params))
-    heating_velocity_duty1.append(velocity_kick(mean_heating_duty1[i], s[scaled_radius_index], *environ_params))
-gas_velocity_duty001 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty001)]
-gas_velocity_duty01 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty01)]
-gas_velocity_duty02 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty02)]
-gas_velocity_duty03 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty03)]
-gas_velocity_duty04 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty04)]
-gas_velocity_duty05 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty05)]
-gas_velocity_duty1 = [np.sqrt(i**2 + j**2) for i, j in zip(cooling_velocity, heating_velocity_duty1)]
+# combining the heating and cooling rates
+duty01_effective_energy_injection = np.add(duty01_interpolated_heating, cooling_rate_samples)
+duty02_effective_energy_injection = np.add(duty02_interpolated_heating, cooling_rate_samples)
+duty03_effective_energy_injection = np.add(duty03_interpolated_heating, cooling_rate_samples)
+# mean effective energy injection rate
+duty01_mean_effective_energy_injection = np.mean(duty01_effective_energy_injection, axis=0)
+duty02_mean_effective_energy_injection = np.mean(duty02_effective_energy_injection, axis=0)
+duty03_mean_effective_energy_injection = np.mean(duty03_effective_energy_injection, axis=0)
 
+# combining the heating and cooling velocities
+duty01_gas_velocity_kicks_samples = np.add(duty01_heating_velocity_kicks_samples, cooling_velocity_kicks_samples)
+duty02_gas_velocity_kicks_samples = np.add(duty02_heating_velocity_kicks_samples, cooling_velocity_kicks_samples)
+duty03_gas_velocity_kicks_samples = np.add(duty03_heating_velocity_kicks_samples, cooling_velocity_kicks_samples)
 # converting velocities to km s^-1
-sound_speed_profile_kms = [i/10**3 for i in sound_speed_profile]
-gas_velocity_duty001_kms = [i/10**3 for i in gas_velocity_duty001]
-gas_velocity_duty01_kms = [i/10**3 for i in gas_velocity_duty01]
-gas_velocity_duty02_kms = [i/10**3 for i in gas_velocity_duty02]
-gas_velocity_duty03_kms = [i/10**3 for i in gas_velocity_duty03]
-gas_velocity_duty04_kms = [i/10**3 for i in gas_velocity_duty04]
-gas_velocity_duty05_kms = [i/10**3 for i in gas_velocity_duty05]
-gas_velocity_duty1_kms = [i/10**3 for i in gas_velocity_duty1]
+sound_speed_profile_kms = np.divide(sound_speed_profile, 10**3)
+duty01_gas_velocity_kms = np.divide(duty01_gas_velocity_kicks_samples, 10**3)
+duty02_gas_velocity_kms = np.divide(duty02_gas_velocity_kicks_samples, 10**3)
+duty03_gas_velocity_kms = np.divide(duty03_gas_velocity_kicks_samples, 10**3)
+# calculating the mean gas velocities
+duty01_mean_gas_velocity_kms = np.mean(duty01_gas_velocity_kms, axis=0)
+duty02_mean_gas_velocity_kms = np.mean(duty02_gas_velocity_kms, axis=0)
+duty03_mean_gas_velocity_kms = np.mean(duty03_gas_velocity_kms, axis=0)
 
 # calculating the Mach number
-Mach_number_duty001 = []
-Mach_number_duty01 = []
-Mach_number_duty02 = []
-Mach_number_duty03 = []
-Mach_number_duty04 = []
-Mach_number_duty05 = []
-Mach_number_duty1 = []
-for i in range(len(tot_common_radius_scaled_radii)):
-    scaled_radius = tot_common_radius_scaled_radii[i]
-    scaled_radius_index = np.argmin(np.abs(s.reshape(radius_bins, 1) - scaled_radius))
-    Mach_number_duty001.append(Mach_number(gas_velocity_duty001[i], s[scaled_radius_index], *environ_params))
-    Mach_number_duty01.append(Mach_number(gas_velocity_duty01[i], s[scaled_radius_index], *environ_params))
-    Mach_number_duty02.append(Mach_number(gas_velocity_duty02[i], s[scaled_radius_index], *environ_params))
-    Mach_number_duty03.append(Mach_number(gas_velocity_duty03[i], s[scaled_radius_index], *environ_params))
-    Mach_number_duty04.append(Mach_number(gas_velocity_duty04[i], s[scaled_radius_index], *environ_params))
-    Mach_number_duty05.append(Mach_number(gas_velocity_duty05[i], s[scaled_radius_index], *environ_params))
-    Mach_number_duty1.append(Mach_number(gas_velocity_duty1[i], s[scaled_radius_index], *environ_params))
+duty01_mach_number_samples = np.divide(duty01_gas_velocity_kicks_samples, sound_speed_profile)
+duty02_mach_number_samples = np.divide(duty02_gas_velocity_kicks_samples, sound_speed_profile)
+duty03_mach_number_samples = np.divide(duty03_gas_velocity_kicks_samples, sound_speed_profile)
+# calculating the mean Mach number
+duty01_mean_mach_number = np.mean(duty01_mach_number_samples, axis=0)
+duty02_mean_mach_number = np.mean(duty02_mach_number_samples, axis=0)
+duty03_mean_mach_number = np.mean(duty03_mach_number_samples, axis=0)
 
+# calculating the non-thermal pressure
+duty01_NTP_samples = vNTP(duty01_mach_number_samples)
+duty02_NTP_samples = vNTP(duty02_mach_number_samples)
+duty03_NTP_samples = vNTP(duty03_mach_number_samples)
 # calculating the mean non-thermal pressure
-average_NTP_duty001 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty001]
-average_NTP_duty01 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty01]
-average_NTP_duty02 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty02]
-average_NTP_duty03 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty03]
-average_NTP_duty04 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty04]
-average_NTP_duty05 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty05]
-average_NTP_duty1 = [gamma*i**2/(3 + gamma*i**2) for i in Mach_number_duty1]
-
-
-
-
-
-
-
+duty01_mean_NTP = np.mean(duty01_NTP_samples, axis=0)
+duty02_mean_NTP = np.mean(duty02_NTP_samples, axis=0)
+duty03_mean_NTP = np.mean(duty03_NTP_samples, axis=0)
 
 
 
@@ -727,130 +844,93 @@ plt0.set_xscale('log')
 plt0.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt0.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt0.set_yscale('log')
-plt0.set_ylim(10**(-36), 10**(-18))
-plt0.set_ylabel('$\\mathcal{C} \quad [\mathrm{Wm^{-3}}]$', fontsize = 18)
-plt0.legend(title='$N=25000, \,\, M_{500} = 5\\times 10^{14} \\mathrm{M}_\\odot;$ \n $c=2.5, \,\, \\alpha=1, \,\, \\eta=1, \,\, d=1, \,\, \\varepsilon=0.5;$ \n $s_Q = -1, \,\, \\theta_\\mathrm{jet} = 8.5^\\circ, \,\, \\theta_\\mathrm{FRI} = 15^\\circ$.')
+plt0.set_ylim(10**(-33), 10**(-18))
+plt0.set_ylabel('$C \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
+plt0.legend(title='Population: $N=30\,000; \,\,$ Mass: $M_{500} = 10^{14.5} \\mathrm{M}_\\odot;$ \nEnvironment: $c=2.5, \,\, \\alpha=1, \,\, \\eta=1, \,\, d=1, \,\, \\varepsilon=0.5;$ \nJet model: $\\theta_\\mathrm{jet} = 8.5^\\circ, \,\, \\theta_\\mathrm{FRI} = 15^\\circ, \,\, Q_\\mathrm{max} = 10^{40} \\mathrm{W},$ \n$Q_\\mathrm{cut} = 10^{38} \\mathrm{W}, \,\, s_{Q1} = -1, \,\, s_{Q2} = -1.5,$\n$t_\\mathrm{max}=1\\mathrm{Gyr}, \,\, s_{t} =-1$.')
 
 plt1 = plt.subplot(gs[1])
-for i in range(N_prime):
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty001_samples[i], color='turquoise', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_samples[i], color='blue', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty02_samples[i], color='deepskyblue', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty03_samples[i], color='gold', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty04_samples[i], color='darkorange', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty05_samples[i], color='red', alpha=0.1)
-    plt1.plot(scaled_halo_radii_samples[i], heating_rate_duty1_samples[i], color='mediumvioletred', alpha=0.1)
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty001, color='turquoise', linewidth=2, ls='-.')
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty01, color='blue', linewidth=2, label='Mean heating', ls='-.')
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty02, color='deepskyblue', linewidth=2, ls='-.')
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty03, color='gold', linewidth=2, ls='-.')
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty04, color='darkorange', linewidth=2, ls='-.')
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty05, color='red', linewidth=2, ls='-.')
-plt1.plot(tot_common_radius_scaled_radii, mean_heating_duty1, color='mediumvioletred', linewidth=2, ls='-.')
+# for i in range(N_prime):
+#     plt1.plot(s, duty01_interpolated_heating[i], color='skyblue', alpha=0.03)
+#     plt1.plot(s, duty02_interpolated_heating[i], color='blue', alpha=0.03)
+#     plt1.plot(s, duty03_interpolated_heating[i], color='blueviolet', alpha=0.03)
+plt1.plot(s, duty01_mean_heating_rate, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{H} \\right>$, when $\\delta=0.1$', ls='-')
+plt1.plot(s, duty02_mean_heating_rate, color='blue', linewidth=2.5, label='$\\left< \\mathcal{H} \\right>$, when $\\delta=0.2$', ls='-')
+plt1.plot(s, duty03_mean_heating_rate, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{H} \\right>$, when $\\delta=0.3$', ls='-')
 plt1.set_xscale('log')
 plt1.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt1.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt1.set_yscale('log')
-plt1.set_ylim(10**(-36), 10**(-18))
-plt1.set_ylabel('$\\mathcal{H} \quad [\mathrm{Wm^{-3}}]$', fontsize = 18)
+plt1.set_ylim(10**(-33), 10**(-18))
+plt1.set_ylabel('$\\mathcal{H} \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
 plt1.legend()
 
 plt2 = plt.subplot(gs[2])
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty001, color='turquoise', linewidth=2, label='$\\delta=0.01$')
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty01, color='blue', linewidth=2, label='$\\delta=0.1$')
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty02, color='deepskyblue', linewidth=2, label='$\\delta=0.2$')
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty03, color='gold', linewidth=2, label='$\\delta=0.3$')
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty04, color='darkorange', linewidth=2, label='$\\delta=0.4$')
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty05, color='red', linewidth=2, label='$\\delta=0.5$')
-plt2.plot(tot_common_radius_scaled_radii, mean_volumetric_energy_injection_duty1, color='mediumvioletred', linewidth=2, label='$\\delta=1$')
+# for i in range(N_prime):
+#     plt2.plot(s, duty01_effective_energy_injection[i], color='skyblue', alpha=0.03)
+#     plt2.plot(s, duty02_effective_energy_injection[i], color='blue', alpha=0.03)
+#     plt2.plot(s, duty03_effective_energy_injection[i], color='blueviolet', alpha=0.03)
+plt2.plot(s, duty01_mean_effective_energy_injection, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.1$', ls='-')
+plt2.plot(s, duty02_mean_effective_energy_injection, color='blue', linewidth=2.5, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.2$', ls='-')
+plt2.plot(s, duty03_mean_effective_energy_injection, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.3$', ls='-')
 plt2.set_xscale('log')
 plt2.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt2.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt2.set_yscale('log')
-plt2.set_ylim(10**(-36), 10**(-18))
-plt2.legend(ncol=3)
-plt2.set_ylabel('$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>  \quad [\mathrm{Wm^{-3}}]$', fontsize = 18)
+plt2.set_ylim(10**(-33), 10**(-18))
+plt2.legend()
+plt2.set_ylabel('$\\mathcal{Q}_\\mathrm{eff} \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
 
 plt3 = plt.subplot(gs[3])
-plt3.plot(s, sound_speed_profile_kms, color='black', ls='-.', label='Sound speed')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty001_kms, linewidth=2, color='turquoise')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty01_kms, linewidth=2, color='blue')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty02_kms, linewidth=2, color='deepskyblue')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty03_kms, linewidth=2, color='gold')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty04_kms, linewidth=2, color='darkorange')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty05_kms, linewidth=2, color='red')
-plt3.plot(tot_common_radius_scaled_radii, gas_velocity_duty1_kms, linewidth=2, color='mediumvioletred')
+# for i in range(N_prime):
+#     plt3.plot(s, duty01_gas_velocity_kms[i], color='skyblue', alpha=0.03)
+#     plt3.plot(s, duty02_gas_velocity_kms[i], color='blue', alpha=0.03)
+#     plt3.plot(s, duty03_gas_velocity_kms[i], color='blueviolet', alpha=0.03)
+plt3.plot(s, duty01_mean_gas_velocity_kms, color='skyblue', linewidth=2.5, label='$\\left< v_\\mathrm{gas} \\right>$, when $\\delta=0.1$', ls='-')
+plt3.plot(s, duty02_mean_gas_velocity_kms, color='blue', linewidth=2.5, label='$\\left< v_\\mathrm{gas} \\right>$, when $\\delta=0.2$', ls='-')
+plt3.plot(s, duty03_mean_gas_velocity_kms, color='blueviolet', linewidth=2.5, label='$\\left< v_\\mathrm{gas} \\right>$, when $\\delta=0.3$', ls='-')
+plt3.plot(s, sound_speed_profile_kms, color='black', ls=':', linewidth=2.5, label='Sound speed, $c_\\mathrm{s}$')
 plt3.set_xscale('log')
 plt3.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt3.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt3.set_yscale('log')
-plt3.set_ylim(10**(-1), 10**5)
-plt3.set_ylabel('$\\left<v_\mathrm{gas}\\right> \quad [\mathrm{km s^{-1}}]$', fontsize = 18)
-plt3.legend()
+plt3.set_ylim(10**(0), 10**6)
+plt3.set_ylabel('$v_\\mathrm{gas} \quad [\\mathrm{km s^{-1}}]$', fontsize = 18)
+plt3.legend(loc=2)
 
 plt4 = plt.subplot(gs[4])
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty001, linewidth=2, color='turquoise')
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty01, linewidth=2, color='blue')
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty02, linewidth=2, color='deepskyblue')
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty03, linewidth=2, color='gold')
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty04, linewidth=2, color='darkorange')
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty05, linewidth=2, color='red')
-plt4.plot(tot_common_radius_scaled_radii, Mach_number_duty1, linewidth=2, color='mediumvioletred')
+# for i in range(N_prime):
+#     plt4.plot(s, duty01_mach_number_samples[i], color='skyblue', alpha=0.03)
+#     plt4.plot(s, duty02_mach_number_samples[i], color='blue', alpha=0.03)
+#     plt4.plot(s, duty03_mach_number_samples[i], color='blueviolet', alpha=0.03)
+plt4.plot(s, duty01_mean_mach_number, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{M} \\right>$, when $\\delta=0.1$', ls='-')
+plt4.plot(s, duty02_mean_mach_number, color='blue', linewidth=2.5, label='$\\left< \\mathcal{M} \\right>$, when $\\delta=0.2$', ls='-')
+plt4.plot(s, duty03_mean_mach_number, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{M} \\right>$, when $\\delta=0.3$', ls='-')
 plt4.set_xscale('log')
 plt4.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt4.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt4.set_ylim(-0.01, 2.51)
-plt4.set_ylabel('$\\mathcal{M} \\equiv v_\mathrm{gas}/c_\mathrm{s}$', fontsize = 18)
+plt4.set_ylabel('$\\mathcal{M} \\equiv v_\\mathrm{gas} / c_\\mathrm{s}$', fontsize = 18)
+plt4.legend()
 
 plt5 = plt.subplot(gs[5])
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty001, linewidth=2, color='turquoise')
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty01, linewidth=2, color='blue')
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty02, linewidth=2, color='deepskyblue')
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty03, linewidth=2, color='gold')
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty04, linewidth=2, color='darkorange')
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty05, linewidth=2, color='red')
-plt5.plot(tot_common_radius_scaled_radii, average_NTP_duty1, linewidth=2, color='mediumvioletred')
+# for i in range(N_prime):
+#     plt5.plot(s, duty01_NTP_samples[i], color='skyblue', alpha=0.03)
+#     plt5.plot(s, duty02_NTP_samples[i], color='blue', alpha=0.03)
+#     plt5.plot(s, duty03_NTP_samples[i], color='blueviolet', alpha=0.03)
+plt5.plot(s, duty01_mean_NTP, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.1$', ls='-')
+plt5.plot(s, duty02_mean_NTP, color='blue', linewidth=2.5, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.2$', ls='-')
+plt5.plot(s, duty03_mean_NTP, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.3$', ls='-')
 plt5.set_xscale('log')
 plt5.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt5.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt5.set_ylim(-0.01, 0.51)
 #plt5.set_yticks([0, 0.05, 0.1, 0.15])
-plt5.set_ylabel('$\\mathcal{F} \\equiv p_\mathrm{nt}/p$', fontsize = 18)
+plt5.set_ylabel('$\\mathcal{F} \\equiv p_\\mathrm{nt}/p$', fontsize = 18)
+plt5.legend()
 
-plt.subplots_adjust(hspace=.4, wspace=.3)
+plt.subplots_adjust(hspace=.25, wspace=.3)
 fig.add_subplot(111, frame_on=False)
 plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
 
-plt.savefig('N25000_c25_NFW_d1_e05_thetaJ85_thetaFRI15_sQ1.png', dpi=350)
+plt.savefig('M14_5_c25_NFW_d1_e05_thetaJ85_thetaFRI15_sQ1_2.png', dpi=350, bbox_inches='tight')
 plt.show()
-
-
-
-
-
-## SAVING THE DATA
-
-# save the common radius
-with open("common_radius_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(tot_common_radius_scaled_radii))
-# save the duty = 0.01 NTP
-with open("NTP_c25_NFW_d1_e05_duty001_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty001))
-# save the duty = 0.1 NTP
-with open("NTP_c25_NFW_d1_e05_duty01_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty01))
-# save the duty = 0.2 NTP
-with open("NTP_c25_NFW_d1_e05_duty02_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty02))
-# save the duty = 0.3 NTP
-with open("NTP_c25_NFW_d1_e05_duty03_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty03))
-# save the duty = 0.4 NTP
-with open("NTP_c25_NFW_d1_e05_duty04_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty04))
-# save the duty = 0.5 NTP
-with open("NTP_c25_NFW_d1_e05_duty05_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty05))
-# save the duty = 1 NTP
-with open("NTP_c25_NFW_d1_e05_duty1_thetaJ85_thetaFRI15_sQ1.txt", "w") as output:
-    output.write(str(average_NTP_duty1))
