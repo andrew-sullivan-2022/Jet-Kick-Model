@@ -406,7 +406,8 @@ tesc_samples_Myr = np.divide(tesc_samples, Myr)
 ton_samples_Myr = np.divide(ton_samples, Myr)
 
 # histograms for jet on-times
-ton_hist, _ = np.histogram(ton_samples_Myr, bins=age_bins)
+ton_bins = np.logspace(np.log10(min(ton_samples_Myr)), np.log10(max(ton_samples_Myr)), base=10, num=14)
+ton_hist, _ = np.histogram(ton_samples_Myr, bins=ton_bins)
 # updating histograms for jet powers and source ages, with stuck jets removed
 Qjet_hist, _ = np.histogram(Qjet_samples, bins=Qjet_bins)
 age_hist, _ = np.histogram(age_samples_Myr, bins=age_bins)
@@ -625,7 +626,7 @@ cbar3 = fig.colorbar(sc3, ax=plt3)
 cbar3.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
 
 plt4 = plt.subplot(gs[4])
-plt4.bar(age_bins[:-1], ton_hist, width=np.diff(age_bins), alpha=1, color='slateblue', edgecolor='black', align='edge')
+plt4.bar(ton_bins[:-1], ton_hist, width=np.diff(ton_bins), alpha=1, color='slateblue', edgecolor='black', align='edge')
 plt4.set_xscale('log')
 plt4.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
 plt4.set_ylabel('Number of sources', fontsize = 18)
@@ -653,7 +654,7 @@ cbar6.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
 plt7 = plt.subplot(gs[7])
 plt7.bar(Rjet_bins[:-1], Req_hist, width=np.diff(Rjet_bins), alpha=1, color='mediumvioletred', edgecolor='black', align='edge', label='Sources that escape the galaxy and flare')
 plt7.set_xscale('log')
-plt7.set_xlim(0.5*0.1, 400)
+plt7.set_xlim(min(Req_samples_kpc), max(Rjet_samples_kpc))
 plt7.set_xlabel('$R_\\mathrm{eq} \\quad [\\mathrm{kpc}]$', fontsize = 18)
 plt7.set_ylabel('Number of sources', fontsize = 18)
 plt7.set_ylim(0, N/5)
@@ -671,7 +672,7 @@ plt9 = plt.subplot(gs[9])
 plt9.bar(Rjet_bins[:-1], Rjet_hist, width=np.diff(Rjet_bins), alpha=1, color='slateblue', edgecolor='black', align='edge', label='Sources that escape the galaxy')
 plt9.bar(Rjet_bins[:-1], Rjet_no_flare_hist, width=np.diff(Rjet_bins), alpha=1, color='plum', edgecolor='black', align='edge', label='Sources that escape but never flare')
 plt9.set_xscale('log')
-plt9.set_xlim(0.5*0.1, 400)
+plt9.set_xlim(min(Req_samples_kpc), max(Rjet_samples_kpc))
 plt9.set_xlabel('$R_\\mathrm{jet} \\quad [\\mathrm{kpc}]$', fontsize = 18)
 plt9.set_ylabel('Number of sources', fontsize = 18)
 plt9.set_ylim(0, N/5)
@@ -691,7 +692,7 @@ norm = mcolors.Normalize(vmin=min(log_Qjet_samples), vmax=max(log_Qjet_samples))
 cmap = cm.plasma
 plt11 = plt.subplot(gs[11])
 # tracing a subsample of evolutionary trajectories
-subsample = 300
+subsample = 30
 time_resolution = 100
 radial_evolution = np.empty((subsample, time_resolution))
 for i in range(subsample):
