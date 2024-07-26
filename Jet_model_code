@@ -626,7 +626,7 @@ cbar3 = fig.colorbar(sc3, ax=plt3)
 cbar3.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
 
 plt4 = plt.subplot(gs[4])
-plt4.bar(ton_bins[:-1], ton_hist, width=np.diff(ton_bins), alpha=1, color='slateblue', edgecolor='black', align='edge')
+plt4.bar(ton_bins[:-1], ton_hist, width=np.diff(ton_bins), alpha=1, color='slateblue', edgecolor='black', align='edge', label='Sources that escape the galaxy')
 plt4.set_xscale('log')
 plt4.set_xlabel('$t_\\mathrm{on} \\quad [\\mathrm{Myr}]$', fontsize = 18)
 plt4.set_ylabel('Number of sources', fontsize = 18)
