@@ -216,12 +216,15 @@ def number_density(s, c, a, d, e, eta): # m^-3
 gas_density_profile = np.empty(radius_bins)
 temperature_profile = np.empty(radius_bins)
 sound_speed_profile = np.empty(radius_bins)
+th_pressure_profile = np.empty(radius_bins)
 number_density_profile = np.empty(radius_bins)
 for i in range(radius_bins):
     gas_density_profile[i] = gas_density(s[i], *environ_params)
     temperature_profile[i] = temperature(s[i], *environ_params)
     sound_speed_profile[i] = sound_speed(s[i], *environ_params)
+    th_pressure_profile[i] = eq_pressure(s[i], *environ_params)
     number_density_profile[i] = number_density(s[i], *environ_params)
+th_pressure_derivative = np.gradient(th_pressure_profile, np.multiply(rvir, s))
 
 
 
@@ -484,13 +487,6 @@ def jet_heating_rate(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta): # W m^-3
     R = np.logspace(np.log10(rres), np.log10(Rjet), base=10, num=150)
     return duty*Phi(R, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)*Q/jet_filling_vol(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)
 
-# gas velocity kick
-def velocity_kick_over_energy(s, c, a, d, e, eta): # m s^-1
-    return (gamma-1)/((eq_pressure_deriv(s, c, a, d, e, eta) + 2*gamma*eq_pressure(s, c, a, d, e, eta)/(s*rvir))) # m s^-1
-velocity_kick_over_energy_profile = np.empty(radius_bins)
-for i in range(radius_bins):
-    velocity_kick_over_energy_profile[i] = velocity_kick_over_energy(s[i], *environ_params)
-
 # non-thermal pressure
 def NTP(mach):
     return (gamma*mach**2)/(3 + gamma*mach**2)
@@ -712,7 +708,7 @@ sm.set_array([])
 cbar = fig.colorbar(sm, ax=plt11)
 cbar.set_label('$\\log_{10} Q_\\mathrm{jet}$', fontsize=18)
 plt11.set_xscale('log')
-plt11.set_xlabel('$t \\quad [\\mathrm{Mpc}]$', fontsize = 18)
+plt11.set_xlabel('$t \\quad [\\mathrm{Myr}]$', fontsize = 18)
 plt11.set_xlim(0.2, 1500)
 plt11.set_yscale('log')
 plt11.set_ylim(0.5*0.1, 400)
@@ -732,6 +728,9 @@ print('Fig 1 saved')
 
 
 ## Calculating the heating rates and the heating velocity kicks
+
+# gas velocity kicks per energy injection rate
+velocity_kick_over_energy_profile = np.divide((gamma-1), (np.add(th_pressure_derivative, np.multiply(2*gamma, np.divide(th_pressure_profile, rvir*s)))))
 
 # creating a common set of radius values
 common_scaled_radii = np.logspace(np.log10(min(np.concatenate(scaled_halo_radii_samples))), np.log10(max(np.concatenate(scaled_halo_radii_samples))), base=10, num=150)
