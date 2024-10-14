@@ -313,7 +313,7 @@ source_pop_params = [duty, sQ1, sQ2, sT]
 
 # time offset as a function of jet power, calibrated from Bicknell+2018
 def t_min(Q, e): # s
-    return 2.29*Myr*(4/(4-e))*(10**38/Q)**0.5*((3-e)/3)**0.5
+    return 1.27*Myr*(4/(4-e))*((3-e)/3)**0.5*(10**37/Q)**0.5
 
 
 
@@ -325,25 +325,15 @@ u_vals = np.random.rand(N)
 # maximum jet power
 Qmax = 10**40 # W
 log_Qmax = 40
-# minimum jet power
-Qmin = 10**38*((4/(4-e))*(2.29*Myr)/Gyr)**2*((3-e)/3) # W
+# minimum jet power, calibrated from Young+ in prep
+Qmin = 10**37*(1.27*Myr/Gyr)**2*(4/(4-e))**2*((3-e)/3) # W
 log_Qmin = np.log10(Qmin)
 
 ## CHOICE REQUIRED: sampling the jet power distribution
 
-# A) sampling by a power-law probability distribution:
-# Qjet_samples = inv_distribution(u_vals, Qmin, Qmax, sQ1)
-
-# B) sampling by a dual power-law probability distribution:
+# sampling by a dual power-law probability distribution:
 Qcut = 10**38 # W
 raw_Qjet_samples = inv_distribution_dual_slope(u_vals, Qmin, Qmax, Qcut, sQ1, sQ2)
-
-# C) sampling by a uniform probability distribution
-# Qmin = 10**39
-# log_Qmin = 39
-# Qmax = 10**40
-# log_Qmax = 40
-# Qjet_samples = inv_uniform_dist(u_vals, Qmin, Qmax)
 
 # histogram for jet powers
 Qjet_bins = np.logspace(log_Qmin, log_Qmax, base=10, num=14)
@@ -480,21 +470,6 @@ def jet_filling_vol(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta):
 
 
 
-## Jet heating and feedback
-
-# jet heating rate
-def jet_heating_rate(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta): # W m^-3
-    R = np.logspace(np.log10(rres), np.log10(Rjet), base=10, num=150)
-    return duty*Phi(R, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)*Q/jet_filling_vol(Rjet, Q, thetaJ, thetaFRI, s0, c, a, d, e, eta)
-
-# non-thermal pressure
-def NTP(mach):
-    return (gamma*mach**2)/(3 + gamma*mach**2)
-# vectorising the function
-vNTP = np.vectorize(NTP)
-
-
-
 ## Sampling the jet evolution model
 
 # appending the jet length, equilibrium time, flaring jet offset time and jet length at pressure equilibrium
@@ -544,7 +519,6 @@ for i in range(N_prime):
         half_angle_samples[i] = [thetaJ]*150
 
 # number and fraction of jet sources that flare
-#Req_samples = Req_samples[~np.isnan(Req_samples)]
 N_flare = N_prime - len(does_not_flare_indices)
 flaring_numbers = [N_flare, N_prime-N_flare]
 flaring_fractions = np.round(np.multiply(100, [N_flare/N_prime, (N_prime-N_flare)/N_prime]), decimals=2)
@@ -729,9 +703,6 @@ print('Fig 1 saved')
 
 ## Calculating the heating rates and the heating velocity kicks
 
-# gas velocity kicks per energy injection rate
-velocity_kick_over_energy_profile = np.divide((gamma-1), (np.add(th_pressure_derivative, np.multiply(2*gamma, np.divide(th_pressure_profile, rvir*s)))))
-
 # creating a common set of radius values
 common_scaled_radii = np.logspace(np.log10(min(np.concatenate(scaled_halo_radii_samples))), np.log10(max(np.concatenate(scaled_halo_radii_samples))), base=10, num=150)
 # creating a scaled radius for the cooling-only regime
@@ -740,33 +711,28 @@ cooling_only_scaled_radii = np.logspace(np.log10(max(common_scaled_radii)), 1, b
 tot_common_scaled_radii = np.array([*common_scaled_radii, *cooling_only_scaled_radii[1:]])
 cluster_radius_steps = len(tot_common_scaled_radii)
 
-# calculating the heating rates
-duty01_heating_rate_samples = np.empty((N_prime, 150))
+# gas velocity kicks per energy injection rate
+velocity_per_volumetric_energy_rate = np.divide((gamma-1), (np.add(th_pressure_derivative, np.multiply(2*gamma, np.divide(th_pressure_profile, rvir*s)))))
+
+# calculating the volumetric heating rates and the heating-induced gas velocity kicks
+duty01_heating_rate_samples = np.empty(N_prime)
+duty02_heating_rate_samples = np.empty(N_prime)
+duty03_heating_rate_samples = np.empty(N_prime)
+duty01_heating_velocity_kick_samples = np.empty((N_prime, radius_bins))
+duty02_heating_velocity_kick_samples = np.empty((N_prime, radius_bins))
+duty03_heating_velocity_kick_samples = np.empty((N_prime, radius_bins))
 for i in range(N_prime):
     Rjet_conical_volume = jet_filling_vol(Rjet_samples[i], Qjet_samples[i], thetaJ, thetaFRI, s0, *environ_params)
-    duty01_heating_rate_samples[i] = np.multiply(filling_factor_samples[i], 2*np.pi*duty*Qjet_samples[i]/Rjet_conical_volume)
-# interpolating the heating values
-duty01_interpolated_heating = np.zeros((N_prime, radius_bins))
-for i, subarray in enumerate(duty01_heating_rate_samples):
-    interpolator = interp1d(scaled_halo_radii_samples[i], subarray, kind='linear', bounds_error=False)
-    duty01_interpolated_heating[i] = interpolator(s)
-duty01_interpolated_heating[np.isnan(duty01_interpolated_heating)] = 0
-duty02_interpolated_heating = np.multiply(0.2/duty, duty01_interpolated_heating)
-duty03_interpolated_heating = np.multiply(0.3/duty, duty01_interpolated_heating)
+    heat_vals_samples = Qjet_samples[i]/Rjet_conical_volume
+    duty01_heating_rate_samples[i] = 0.1*heat_vals_samples
+    duty02_heating_rate_samples[i] = 0.2*heat_vals_samples
+    duty03_heating_rate_samples[i] = 0.3*heat_vals_samples
+    duty01_heating_velocity_kick_samples[i] = 0.1*heat_vals_samples*velocity_per_volumetric_energy_rate
+    duty02_heating_velocity_kick_samples[i] = 0.2*heat_vals_samples*velocity_per_volumetric_energy_rate
+    duty03_heating_velocity_kick_samples[i] = 0.3*heat_vals_samples*velocity_per_volumetric_energy_rate
 
-# calculating the mean heating rate
-duty01_mean_heating_rate = np.mean(duty01_interpolated_heating, axis=0)
-duty02_mean_heating_rate = np.multiply(0.2/duty, duty01_mean_heating_rate)
-duty03_mean_heating_rate = np.multiply(0.3/duty, duty01_mean_heating_rate)
-
-# calculating the heating-induced velocity kick
-duty01_heating_velocity_kicks_samples = duty01_interpolated_heating*velocity_kick_over_energy_profile
-duty02_heating_velocity_kicks_samples = np.multiply(0.2/duty, duty01_heating_velocity_kicks_samples)
-duty03_heating_velocity_kicks_samples = np.multiply(0.3/duty, duty01_heating_velocity_kicks_samples)
-
-
-
-## Calculating the cooling rates and the cooling velocity kicks
+# calculating the cooling-induced gas velocity kick
+cooling_velocity_kicks_samples = cooling_rate*velocity_per_volumetric_energy_rate
 
 # interpolating the filling factor
 interpolated_filling_factor = np.zeros((N_prime, radius_bins))
@@ -775,53 +741,51 @@ for i, subarray in enumerate(filling_factor_samples):
     interpolated_filling_factor[i] = interpolator(s)
 interpolated_filling_factor[np.isnan(interpolated_filling_factor)] = 0
 
-# calculating the cooling rate
-cooling_rate_samples = np.multiply(np.subtract(1, interpolated_filling_factor), cooling_rate)
+# calculating the effective gas velocity kicks and the effective volumetric energy injection rates
+duty01_effective_velocity_kick_samples = np.empty((N_prime, radius_bins))
+duty02_effective_velocity_kick_samples = np.empty((N_prime, radius_bins))
+duty03_effective_velocity_kick_samples = np.empty((N_prime, radius_bins))
+duty01_effective_energy_injection_samples = np.empty((N_prime, radius_bins))
+duty02_effective_energy_injection_samples = np.empty((N_prime, radius_bins))
+duty03_effective_energy_injection_samples = np.empty((N_prime, radius_bins))
+for i in range(N_prime):
+    duty01_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty01_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks_samples))))
+    duty02_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty02_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks_samples))))
+    duty03_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty03_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks_samples))))
+    duty01_effective_energy_injection_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty01_heating_rate_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_rate))))
+    duty02_effective_energy_injection_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty02_heating_rate_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_rate))))
+    duty03_effective_energy_injection_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty03_heating_rate_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_rate))))
+# calculating the mean effective gas velocity kicks
+duty01_mean_effective_velocity = np.mean(duty01_effective_velocity_kick_samples, axis=0)
+duty02_mean_effective_velocity = np.mean(duty02_effective_velocity_kick_samples, axis=0)
+duty03_mean_effective_velocity = np.mean(duty03_effective_velocity_kick_samples, axis=0)
+# calculating the mean effective volumetric energy injection rates
+duty01_mean_effective_energy_injection = np.mean(duty01_effective_energy_injection_samples, axis=0)
+duty02_mean_effective_energy_injection = np.mean(duty02_effective_energy_injection_samples, axis=0)
+duty03_mean_effective_energy_injection = np.mean(duty03_effective_energy_injection_samples, axis=0)
 
-# calculating the cooling-induced velocity kick
-cooling_velocity_kicks_samples = cooling_rate_samples*velocity_kick_over_energy_profile
-
-
-
-## Predicting the total velocity kick, the Mach number and the non-thermal pressure
-
-# combining the heating and cooling rates
-duty01_effective_energy_injection = np.add(duty01_interpolated_heating, cooling_rate_samples)
-duty02_effective_energy_injection = np.add(duty02_interpolated_heating, cooling_rate_samples)
-duty03_effective_energy_injection = np.add(duty03_interpolated_heating, cooling_rate_samples)
-# mean effective energy injection rate
-duty01_mean_effective_energy_injection = np.mean(duty01_effective_energy_injection, axis=0)
-duty02_mean_effective_energy_injection = np.mean(duty02_effective_energy_injection, axis=0)
-duty03_mean_effective_energy_injection = np.mean(duty03_effective_energy_injection, axis=0)
-
-# combining the heating and cooling velocities
-duty01_gas_velocity_kicks_samples = np.add(duty01_heating_velocity_kicks_samples, cooling_velocity_kicks_samples)
-duty02_gas_velocity_kicks_samples = np.add(duty02_heating_velocity_kicks_samples, cooling_velocity_kicks_samples)
-duty03_gas_velocity_kicks_samples = np.add(duty03_heating_velocity_kicks_samples, cooling_velocity_kicks_samples)
 # converting velocities to km s^-1
 sound_speed_profile_kms = np.divide(sound_speed_profile, 10**3)
-duty01_gas_velocity_kms = np.divide(duty01_gas_velocity_kicks_samples, 10**3)
-duty02_gas_velocity_kms = np.divide(duty02_gas_velocity_kicks_samples, 10**3)
-duty03_gas_velocity_kms = np.divide(duty03_gas_velocity_kicks_samples, 10**3)
-# calculating the mean gas velocities
-duty01_mean_gas_velocity_kms = np.mean(duty01_gas_velocity_kms, axis=0)
-duty02_mean_gas_velocity_kms = np.mean(duty02_gas_velocity_kms, axis=0)
-duty03_mean_gas_velocity_kms = np.mean(duty03_gas_velocity_kms, axis=0)
+duty01_effective_velocity_kms = np.divide(duty01_effective_velocity_kick_samples, 10**3)
+duty02_effective_velocity_kms = np.divide(duty02_effective_velocity_kick_samples, 10**3)
+duty03_effective_velocity_kms = np.divide(duty03_effective_velocity_kick_samples, 10**3)
+duty01_mean_effective_velocity_kms = np.divide(duty01_mean_effective_velocity, 10**3)
+duty02_mean_effective_velocity_kms = np.divide(duty02_mean_effective_velocity, 10**3)
+duty03_mean_effective_velocity_kms = np.divide(duty03_mean_effective_velocity, 10**3)
 
-# calculating the Mach number
-duty01_mach_number_samples = np.divide(duty01_gas_velocity_kicks_samples, sound_speed_profile)
-duty02_mach_number_samples = np.divide(duty02_gas_velocity_kicks_samples, sound_speed_profile)
-duty03_mach_number_samples = np.divide(duty03_gas_velocity_kicks_samples, sound_speed_profile)
-# calculating the mean Mach number
-duty01_mean_mach_number = np.mean(duty01_mach_number_samples, axis=0)
-duty02_mean_mach_number = np.mean(duty02_mach_number_samples, axis=0)
-duty03_mean_mach_number = np.mean(duty03_mach_number_samples, axis=0)
 
-# calculating the non-thermal pressure
-duty01_NTP_samples = vNTP(duty01_mach_number_samples)
-duty02_NTP_samples = vNTP(duty02_mach_number_samples)
-duty03_NTP_samples = vNTP(duty03_mach_number_samples)
-# calculating the mean non-thermal pressure
+
+## Calculating the non-thermal pressure (NTP)
+
+# NTP as the kinetic to total energy density ratio for each source
+duty01_NTP_samples = np.empty((N_prime, radius_bins))
+duty02_NTP_samples = np.empty((N_prime, radius_bins))
+duty03_NTP_samples = np.empty((N_prime, radius_bins))
+for i in range(N_prime):
+    duty01_NTP_samples[i] = np.divide(1, np.add(1, (3*kB/(mu*mp))*np.divide(temperature_profile, np.square(duty01_effective_velocity_kick_samples[i]))))
+    duty02_NTP_samples[i] = np.divide(1, np.add(1, (3*kB/(mu*mp))*np.divide(temperature_profile, np.square(duty02_effective_velocity_kick_samples[i]))))
+    duty03_NTP_samples[i] = np.divide(1, np.add(1, (3*kB/(mu*mp))*np.divide(temperature_profile, np.square(duty03_effective_velocity_kick_samples[i]))))
+# calculating the mean NTP profiles
 duty01_mean_NTP = np.mean(duty01_NTP_samples, axis=0)
 duty02_mean_NTP = np.mean(duty02_NTP_samples, axis=0)
 duty03_mean_NTP = np.mean(duty03_NTP_samples, axis=0)
@@ -839,98 +803,58 @@ duty03_mean_NTP = np.mean(duty03_NTP_samples, axis=0)
 # - Mach number
 # - non-thermal pressure
 
-fig = plt.figure(figsize=[15, 7])
-gs = gridspec.GridSpec(2, 3)
+subsample = 100
+fig = plt.figure(figsize=[15, 4])
+gs = gridspec.GridSpec(1, 3)
 
 plt0 = plt.subplot(gs[0])
-plt0.plot(s, cooling_rate, color='teal', linewidth=2)
+for i in range(subsample):
+    plt0.plot(s, duty01_effective_velocity_kms[i], color='skyblue', alpha=0.03)
+    plt0.plot(s, duty02_effective_velocity_kms[i], color='blue', alpha=0.03)
+    plt0.plot(s, duty02_effective_velocity_kms[i], color='blueviolet', alpha=0.03)
+plt0.plot(s, duty01_mean_effective_velocity_kms, color='skyblue', linewidth=2.8, label='$\\left< v_\\mathrm{eff} \\right>$, when $\\delta=0.1$', ls='-')
+plt0.plot(s, duty02_mean_effective_velocity_kms, color='blue', linewidth=2.8, label='$\\left< v_\\mathrm{eff} \\right>$, when $\\delta=0.2$', ls='-')
+plt0.plot(s, duty03_mean_effective_velocity_kms, color='blueviolet', linewidth=2.8, label='$\\left< v_\\mathrm{eff} \\right>$, when $\\delta=0.3$', ls='-')
+plt0.plot(s, sound_speed_profile_kms, color='black', ls=':', linewidth=2.5, label='Sound speed, $c_\\mathrm{s}$')
 plt0.set_xscale('log')
 plt0.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt0.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt0.set_yscale('log')
-plt0.set_ylim(10**(-33), 10**(-18))
-plt0.set_ylabel('$C \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
-plt0.legend(title='Population: $N=30\,000; \,\,$ Mass: $M_{500} = 10^{14.5} \\mathrm{M}_\\odot;$ \nEnvironment: $c=2.5, \,\, \\alpha=1, \,\, \\eta=1, \,\, d=1, \,\, \\varepsilon=0.5;$ \nJet model: $\\theta_\\mathrm{jet} = 8.5^\\circ, \,\, \\theta_\\mathrm{FRI} = 15^\\circ, \,\, Q_\\mathrm{max} = 10^{40} \\mathrm{W},$ \n$Q_\\mathrm{cut} = 10^{38} \\mathrm{W}, \,\, s_{Q1} = -1, \,\, s_{Q2} = -1.5,$\n$t_\\mathrm{max}=1\\mathrm{Gyr}, \,\, s_{t} =-1$.')
+plt0.set_ylim(0.5*10**(0), 0.5*10**6)
+plt0.set_ylabel('$v_\\mathrm{eff} \quad [\\mathrm{km s^{-1}}]$', fontsize = 18)
+plt0.legend(loc=2)
 
 plt1 = plt.subplot(gs[1])
-# for i in range(N_prime):
-#     plt1.plot(s, duty01_interpolated_heating[i], color='skyblue', alpha=0.03)
-#     plt1.plot(s, duty02_interpolated_heating[i], color='blue', alpha=0.03)
-#     plt1.plot(s, duty03_interpolated_heating[i], color='blueviolet', alpha=0.03)
-plt1.plot(s, duty01_mean_heating_rate, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{H} \\right>$, when $\\delta=0.1$', ls='-')
-plt1.plot(s, duty02_mean_heating_rate, color='blue', linewidth=2.5, label='$\\left< \\mathcal{H} \\right>$, when $\\delta=0.2$', ls='-')
-plt1.plot(s, duty03_mean_heating_rate, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{H} \\right>$, when $\\delta=0.3$', ls='-')
+for i in range(subsample):
+    plt1.plot(s, duty01_effective_energy_injection_samples[i], color='skyblue', alpha=0.03)
+    plt1.plot(s, duty02_effective_energy_injection_samples[i], color='blue', alpha=0.03)
+    plt1.plot(s, duty03_effective_energy_injection_samples[i], color='blueviolet', alpha=0.03)
+plt1.plot(s, duty01_mean_effective_energy_injection, color='skyblue', linewidth=2.8, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.1$', ls='-')
+plt1.plot(s, duty02_mean_effective_energy_injection, color='blue', linewidth=2.8, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.2$', ls='-')
+plt1.plot(s, duty03_mean_effective_energy_injection, color='blueviolet', linewidth=2.8, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.3$', ls='-')
 plt1.set_xscale('log')
 plt1.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt1.set_xlabel('$r/r_{500}$', fontsize = 18)
 plt1.set_yscale('log')
 plt1.set_ylim(10**(-33), 10**(-18))
-plt1.set_ylabel('$\\mathcal{H} \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
-plt1.legend()
+plt1.legend(loc=1)
+plt1.set_ylabel('$\\mathcal{Q}_\\mathrm{eff} \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
 
 plt2 = plt.subplot(gs[2])
-# for i in range(N_prime):
-#     plt2.plot(s, duty01_effective_energy_injection[i], color='skyblue', alpha=0.03)
-#     plt2.plot(s, duty02_effective_energy_injection[i], color='blue', alpha=0.03)
-#     plt2.plot(s, duty03_effective_energy_injection[i], color='blueviolet', alpha=0.03)
-plt2.plot(s, duty01_mean_effective_energy_injection, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.1$', ls='-')
-plt2.plot(s, duty02_mean_effective_energy_injection, color='blue', linewidth=2.5, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.2$', ls='-')
-plt2.plot(s, duty03_mean_effective_energy_injection, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{Q}_\\mathrm{eff} \\right>$, when $\\delta=0.3$', ls='-')
+for i in range(subsample):
+    plt2.plot(s, duty01_NTP_samples[i], color='skyblue', alpha=0.03)
+    plt2.plot(s, duty02_NTP_samples[i], color='blue', alpha=0.03)
+    plt2.plot(s, duty03_NTP_samples[i], color='blueviolet', alpha=0.03)
+plt2.plot(s, duty01_mean_NTP, color='skyblue', linewidth=2.8, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.1$', ls='-')
+plt2.plot(s, duty02_mean_NTP, color='blue', linewidth=2.8, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.2$', ls='-')
+plt2.plot(s, duty03_mean_NTP, color='blueviolet', linewidth=2.8, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.3$', ls='-')
 plt2.set_xscale('log')
 plt2.set_xlim(0.5*10**(-2), 0.5*10**(0))
 plt2.set_xlabel('$r/r_{500}$', fontsize = 18)
-plt2.set_yscale('log')
-plt2.set_ylim(10**(-33), 10**(-18))
-plt2.legend()
-plt2.set_ylabel('$\\mathcal{Q}_\\mathrm{eff} \quad [\\mathrm{Wm^{-3}}]$', fontsize = 18)
-
-plt3 = plt.subplot(gs[3])
-# for i in range(N_prime):
-#     plt3.plot(s, duty01_gas_velocity_kms[i], color='skyblue', alpha=0.03)
-#     plt3.plot(s, duty02_gas_velocity_kms[i], color='blue', alpha=0.03)
-#     plt3.plot(s, duty03_gas_velocity_kms[i], color='blueviolet', alpha=0.03)
-plt3.plot(s, duty01_mean_gas_velocity_kms, color='skyblue', linewidth=2.5, label='$\\left< v_\\mathrm{gas} \\right>$, when $\\delta=0.1$', ls='-')
-plt3.plot(s, duty02_mean_gas_velocity_kms, color='blue', linewidth=2.5, label='$\\left< v_\\mathrm{gas} \\right>$, when $\\delta=0.2$', ls='-')
-plt3.plot(s, duty03_mean_gas_velocity_kms, color='blueviolet', linewidth=2.5, label='$\\left< v_\\mathrm{gas} \\right>$, when $\\delta=0.3$', ls='-')
-plt3.plot(s, sound_speed_profile_kms, color='black', ls=':', linewidth=2.5, label='Sound speed, $c_\\mathrm{s}$')
-plt3.set_xscale('log')
-plt3.set_xlim(0.5*10**(-2), 0.5*10**(0))
-plt3.set_xlabel('$r/r_{500}$', fontsize = 18)
-plt3.set_yscale('log')
-plt3.set_ylim(10**(0), 10**6)
-plt3.set_ylabel('$v_\\mathrm{gas} \quad [\\mathrm{km s^{-1}}]$', fontsize = 18)
-plt3.legend(loc=2)
-
-plt4 = plt.subplot(gs[4])
-# for i in range(N_prime):
-#     plt4.plot(s, duty01_mach_number_samples[i], color='skyblue', alpha=0.03)
-#     plt4.plot(s, duty02_mach_number_samples[i], color='blue', alpha=0.03)
-#     plt4.plot(s, duty03_mach_number_samples[i], color='blueviolet', alpha=0.03)
-plt4.plot(s, duty01_mean_mach_number, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{M} \\right>$, when $\\delta=0.1$', ls='-')
-plt4.plot(s, duty02_mean_mach_number, color='blue', linewidth=2.5, label='$\\left< \\mathcal{M} \\right>$, when $\\delta=0.2$', ls='-')
-plt4.plot(s, duty03_mean_mach_number, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{M} \\right>$, when $\\delta=0.3$', ls='-')
-plt4.set_xscale('log')
-plt4.set_xlim(0.5*10**(-2), 0.5*10**(0))
-plt4.set_xlabel('$r/r_{500}$', fontsize = 18)
-plt4.set_ylim(-0.01, 2.51)
-plt4.set_ylabel('$\\mathcal{M} \\equiv v_\\mathrm{gas} / c_\\mathrm{s}$', fontsize = 18)
-plt4.legend()
-
-plt5 = plt.subplot(gs[5])
-# for i in range(N_prime):
-#     plt5.plot(s, duty01_NTP_samples[i], color='skyblue', alpha=0.03)
-#     plt5.plot(s, duty02_NTP_samples[i], color='blue', alpha=0.03)
-#     plt5.plot(s, duty03_NTP_samples[i], color='blueviolet', alpha=0.03)
-plt5.plot(s, duty01_mean_NTP, color='skyblue', linewidth=2.5, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.1$', ls='-')
-plt5.plot(s, duty02_mean_NTP, color='blue', linewidth=2.5, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.2$', ls='-')
-plt5.plot(s, duty03_mean_NTP, color='blueviolet', linewidth=2.5, label='$\\left< \\mathcal{F} \\right>$, when $\\delta=0.3$', ls='-')
-plt5.set_xscale('log')
-plt5.set_xlim(0.5*10**(-2), 0.5*10**(0))
-plt5.set_xlabel('$r/r_{500}$', fontsize = 18)
-plt5.set_ylim(-0.01, 0.51)
-#plt5.set_yticks([0, 0.05, 0.1, 0.15])
-plt5.set_ylabel('$\\mathcal{F} \\equiv p_\\mathrm{nt}/p$', fontsize = 18)
-plt5.legend()
+plt2.set_ylim(-0.03, 0.34)
+plt2.set_yticks([0, 0.1, 0.2, 0.3])
+plt2.set_ylabel('$\\mathcal{F} \\equiv p_\\mathrm{nt}/p$', fontsize = 18)
+plt2.legend(loc=1)
 
 plt.subplots_adjust(hspace=.25, wspace=.3)
 fig.add_subplot(111, frame_on=False)
