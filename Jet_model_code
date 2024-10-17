@@ -732,7 +732,7 @@ for i in range(N_prime):
     duty03_heating_velocity_kick_samples[i] = 0.3*heat_vals_samples*velocity_per_volumetric_energy_rate
 
 # calculating the cooling-induced gas velocity kick
-cooling_velocity_kicks_samples = cooling_rate*velocity_per_volumetric_energy_rate
+cooling_velocity_kicks = cooling_rate*velocity_per_volumetric_energy_rate
 
 # interpolating the filling factor
 interpolated_filling_factor = np.zeros((N_prime, radius_bins))
@@ -749,9 +749,9 @@ duty01_effective_energy_injection_samples = np.empty((N_prime, radius_bins))
 duty02_effective_energy_injection_samples = np.empty((N_prime, radius_bins))
 duty03_effective_energy_injection_samples = np.empty((N_prime, radius_bins))
 for i in range(N_prime):
-    duty01_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty01_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks_samples))))
-    duty02_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty02_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks_samples))))
-    duty03_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty03_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks_samples))))
+    duty02_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty02_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks))))
+    duty03_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty03_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks))))
+    duty01_effective_velocity_kick_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty01_heating_velocity_kick_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_velocity_kicks))))
     duty01_effective_energy_injection_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty01_heating_rate_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_rate))))
     duty02_effective_energy_injection_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty02_heating_rate_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_rate))))
     duty03_effective_energy_injection_samples[i] = np.sqrt(np.add(np.multiply(interpolated_filling_factor[i], np.square(duty03_heating_rate_samples[i])), np.multiply(np.subtract(1, interpolated_filling_factor[i]), np.square(cooling_rate))))
